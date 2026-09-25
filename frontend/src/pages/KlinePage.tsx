@@ -109,6 +109,19 @@ export function KlinePage() {
 
       {data && data.candles.length > 0 && (
         <>
+          {/* Indicator chip row — 移到 K 线图正上方，点一下 chip 即时切换 */}
+          {prefs && (
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-text-primary">主图指标</span>
+                <span className="text-[11px] text-text-tertiary">
+                  点击 chip 切换显示/隐藏
+                </span>
+              </div>
+              <IndicatorTogglePanel prefs={prefs} onChange={handleIndicatorToggle} />
+            </Card>
+          )}
+
           <KlineChart
             key={`${data.symbol}-${data.timeframe}-${prefs ? JSON.stringify(prefs.indicators) : "loading"}`}
             candles={data.candles}
@@ -118,19 +131,6 @@ export function KlinePage() {
             onSymbolChange={setSymbol}
             onTimeframeChange={setTimeframe}
           />
-
-          {/* Indicator toolbar — 永远展开在 K 线图正上方，方便一键切换 */}
-          {prefs && (
-            <Card className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-text-primary">主图指标</span>
-                <span className="text-[11px] text-text-tertiary">
-                  MA 系列 + BOLL，点击切换显示/隐藏
-                </span>
-              </div>
-              <IndicatorTogglePanel prefs={prefs} onChange={handleIndicatorToggle} />
-            </Card>
-          )}
 
           <AnalysisPanel />
           <TrendAnalysisPanel
