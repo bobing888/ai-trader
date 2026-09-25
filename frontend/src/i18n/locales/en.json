@@ -1,0 +1,83 @@
+{
+  "common": {
+    "appName": "AI Trader",
+    "appTagline": "Smart crypto trading signals",
+    "loading": "Loading...",
+    "error": "Error",
+    "retry": "Retry",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "search": "Search symbols, trades, signals",
+    "noData": "No data",
+    "reconnecting": "Reconnecting...",
+    "connectionLost": "Connection lost",
+    "liveFeed": "Live market feed"
+  },
+  "kline": {
+    "title": "Candlestick",
+    "symbol": "Symbol",
+    "timeframe": "Timeframe",
+    "open": "O",
+    "high": "H",
+    "low": "L",
+    "close": "C",
+    "volume": "V",
+    "candleCount": "candles"
+  },
+  "timeframes": {
+    "1m": "1m",
+    "5m": "5m",
+    "15m": "15m",
+    "1h": "1h",
+    "4h": "4h",
+    "1d": "1D"
+  },
+  "recommendation": {
+    "title": "Recommendations",
+    "confidence": "Confidence",
+    "signal": "Signal",
+    "long": "Long",
+    "short": "Short",
+    "entry": "Entry",
+    "stopLoss": "Stop Loss",
+    "takeProfit": "Take Profit",
+    "winRate": "Historical Win Rate",
+    "avgDuration": "Avg Duration",
+    "signalReason": "Signal Reason",
+    "noRecommendations": "No recommendations",
+    "loading": "Loading recommendations..."
+  },
+  "trade": {
+    "title": "Trades",
+    "pair": "Pair",
+    "strategy": "Strategy",
+    "openDate": "Open Date",
+    "closeDate": "Close Date",
+    "openRate": "Open Rate",
+    "closeRate": "Close Rate",
+    "profit": "P&L",
+    "exitReason": "Exit Reason"
+  },
+  "backtest": {
+    "title": "Backtest",
+    "totalProfit": "Total Profit",
+    "winRate": "Win Rate",
+    "profitFactor": "Profit Factor",
+    "maxDrawdown": "Max Drawdown",
+    "sharpe": "Sharpe",
+    "totalTrades": "Total Trades"
+  },
+  "nav": {
+    "kline": "Charts",
+    "recommendations": "Signals",
+    "trades": "Trades",
+    "backtest": "Backtest",
+    "strategies": "Strategies",
+    "futures": "Futures",
+    "settings": "Settings",
+    "system": "System"
+  }
+}

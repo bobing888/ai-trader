@@ -1,0 +1,83 @@
+{
+  "common": {
+    "appName": "AI 交易助手",
+    "appTagline": "智能加密货币交易信号",
+    "loading": "加载中...",
+    "error": "出错了",
+    "retry": "重试",
+    "confirm": "确认",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除",
+    "edit": "编辑",
+    "search": "搜索币种、交易、信号",
+    "noData": "暂无数据",
+    "reconnecting": "重新连接中...",
+    "connectionLost": "连接断开",
+    "liveFeed": "实时行情已连接"
+  },
+  "kline": {
+    "title": "K 线图",
+    "symbol": "交易对",
+    "timeframe": "时间周期",
+    "open": "开",
+    "high": "高",
+    "low": "低",
+    "close": "收",
+    "volume": "量",
+    "candleCount": "根 K 线"
+  },
+  "timeframes": {
+    "1m": "1分",
+    "5m": "5分",
+    "15m": "15分",
+    "1h": "1时",
+    "4h": "4时",
+    "1d": "日"
+  },
+  "recommendation": {
+    "title": "推荐单",
+    "confidence": "置信度",
+    "signal": "信号",
+    "long": "做多",
+    "short": "做空",
+    "entry": "入场",
+    "stopLoss": "止损",
+    "takeProfit": "止盈",
+    "winRate": "历史胜率",
+    "avgDuration": "平均持仓",
+    "signalReason": "信号理由",
+    "noRecommendations": "暂无推荐信号",
+    "loading": "正在加载推荐信号..."
+  },
+  "trade": {
+    "title": "交易记录",
+    "pair": "交易对",
+    "strategy": "策略",
+    "openDate": "开仓时间",
+    "closeDate": "平仓时间",
+    "openRate": "开仓价",
+    "closeRate": "平仓价",
+    "profit": "盈亏",
+    "exitReason": "离场原因"
+  },
+  "backtest": {
+    "title": "回测复盘",
+    "totalProfit": "总收益",
+    "winRate": "胜率",
+    "profitFactor": "盈亏比",
+    "maxDrawdown": "最大回撤",
+    "sharpe": "夏普比",
+    "totalTrades": "交易数"
+  },
+  "nav": {
+    "kline": "K 线",
+    "recommendations": "推荐单",
+    "trades": "交易",
+    "backtest": "回测",
+    "strategies": "策略",
+    "futures": "合约",
+    "settings": "设置",
+    "system": "系统"
+  }
+}

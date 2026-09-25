@@ -1,0 +1,167 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* === Tokens — overridden per-theme below === */
+  --color-bg-primary: #140c0c;
+  --color-bg-secondary: #1a1311;
+  --color-bg-tertiary: #221916;
+  --color-bg-elevated: #2b201b;
+
+  --color-border: rgba(255, 240, 220, 0.06);
+  --color-border-strong: rgba(255, 240, 220, 0.12);
+
+  --color-text-primary: #ffffff;
+  --color-text-secondary: rgba(255, 240, 220, 0.66);
+  --color-text-tertiary: rgba(255, 240, 220, 0.42);
+
+  /* === Brand voltage: lime — same hue, two saturations === */
+  --color-accent: #ccff00;
+  --color-accent-hover: #d9ff33;
+  --color-accent-ink: #140c0c;
+
+  /* === Semantic finance colors === */
+  --color-bull: #22c55e;
+  --color-bear: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+
+  --radius-pill: 9999px;
+}
+
+/* ============================================================
+   DARK theme (Robinhood warm-black default)
+   ============================================================ */
+:root,
+[data-theme="dark"] {
+  --color-bg-primary: #140c0c;
+  --color-bg-secondary: #1a1311;
+  --color-bg-tertiary: #221916;
+  --color-bg-elevated: #2b201b;
+
+  --color-border: rgba(255, 240, 220, 0.06);
+  --color-border-strong: rgba(255, 240, 220, 0.12);
+
+  --color-text-primary: #ffffff;
+  --color-text-secondary: rgba(255, 240, 220, 0.66);
+  --color-text-tertiary: rgba(255, 240, 220, 0.42);
+
+  --color-accent: #ccff00;
+  --color-accent-hover: #d9ff33;
+  --color-accent-ink: #140c0c;
+}
+
+/* ============================================================
+   LIGHT theme — warm cream + lime-600 (darker for contrast on white)
+   ============================================================ */
+[data-theme="light"] {
+  --color-bg-primary: #faf7f0;        /* warm cream */
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #f0ebe0;
+  --color-bg-elevated: #e8e2d4;
+
+  --color-border: rgba(20, 12, 12, 0.06);
+  --color-border-strong: rgba(20, 12, 12, 0.12);
+
+  --color-text-primary: #1a1208;       /* warm near-black ink */
+  --color-text-secondary: rgba(20, 12, 12, 0.66);
+  --color-text-tertiary: rgba(20, 12, 12, 0.42);
+
+  --color-accent: #65a30d;             /* lime-600 — readable on cream */
+  --color-accent-hover: #84cc16;       /* lime-500 */
+  --color-accent-ink: #ffffff;
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+body {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  min-height: 100vh;
+  font-feature-settings: "cv11", "ss01", "ss03";
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Custom scrollbar — adapts to theme */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}
+
+/* Warm radial spotlight */
+.bg-warm-spotlight {
+  background-image:
+    radial-gradient(at 0% 0%, rgba(204, 255, 0, 0.04) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(255, 240, 220, 0.03) 0px, transparent 50%);
+}
+[data-theme="light"] .bg-warm-spotlight {
+  background-image:
+    radial-gradient(at 0% 0%, rgba(132, 204, 22, 0.06) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(20, 12, 12, 0.02) 0px, transparent 50%);
+}
+
+/* ============================================================
+   Animations
+   ============================================================ */
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.animate-pulse-live {
+  animation: pulse-live 1.6s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 240, 220, 0.04) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes slide-up-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slide-up-fade 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Tabular nums utility */
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
