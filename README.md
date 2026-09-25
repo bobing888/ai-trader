@@ -26,7 +26,7 @@ ai-trader/
 cd backend
 uv sync                  # 安装依赖
 uv run pytest            # 跑测试
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8765  # ⚠️ 生产端口是 8765，不是 8000
 ```
 
 ### 前端
