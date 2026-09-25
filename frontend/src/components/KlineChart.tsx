@@ -879,19 +879,19 @@ export function KlineChart({ candles, symbol, timeframe, onSymbolChange, onTimef
         className="relative flex items-center gap-3 px-5 border-b border-[rgba(255,240,220,0.06)] bg-bg-tertiary/30"
         style={{ minHeight: "48px" }}
       >
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-wider text-text-tertiary">交易对</span>
-          {onSymbolChange && (
+        {/* Spacer pushes symbol + timeframe pills to the right (用户要求右上角、紧贴 1 分旁边) */}
+        <div className="flex-1" />
+        {onSymbolChange && (
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-wider text-text-tertiary">交易对</span>
             <SymbolPicker
               symbol={symbol}
               timeframe={timeframe as Timeframe}
               onSymbolChange={onSymbolChange}
               // onTimeframeChange 不传 — KlineChart 顶部右侧单独渲染 timeframe pills
             />
-          )}
-        </div>
-        {/* Spacer pushes timeframe pills to the right (用户要求右上角) */}
-        <div className="flex-1" />
+          </div>
+        )}
         {onTimeframeChange && (
           <div className="flex items-center gap-1 p-1 rounded-full bg-bg-secondary border border-[rgba(255,240,220,0.06)]">
             {TIMEFRAMES.map((tf) => (
