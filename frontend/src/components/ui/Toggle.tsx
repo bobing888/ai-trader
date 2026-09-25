@@ -6,6 +6,7 @@ export interface ToggleProps {
   size?: "sm" | "md";
   disabled?: boolean;
   label?: string;
+  "data-testid"?: string;
 }
 
 interface ToggleSize {
@@ -20,7 +21,7 @@ const SIZE: Record<NonNullable<ToggleProps["size"]>, ToggleSize> = {
   md: { trackW: 44, trackH: 26, knob: 20, padding: 3 },
 };
 
-export function Toggle({ checked, onChange, size = "md", disabled, label }: ToggleProps) {
+export function Toggle({ checked, onChange, size = "md", disabled, label, "data-testid": testId }: ToggleProps) {
   const s = SIZE[size];
   const trackStyle = { width: `${s.trackW}px`, height: `${s.trackH}px` };
   const knobStyle = {
@@ -38,6 +39,7 @@ export function Toggle({ checked, onChange, size = "md", disabled, label }: Togg
       disabled={disabled}
       onClick={() => onChange(!checked)}
       style={trackStyle}
+      data-testid={testId}
       className={cn(
         "relative shrink-0 rounded-full border transition-colors duration-200",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary",

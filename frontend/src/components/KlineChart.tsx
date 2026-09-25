@@ -57,18 +57,18 @@ const COLORS = {
   border: "rgba(255, 240, 220, 0.08)",
   bull: "#22c55e",
   bear: "#ef4444",
-  // 主图指标配色（多 MA 用渐变区分）
-  ma5: "#fbbf24",   // amber
-  ma10: "#f97316",  // orange
-  ma20: "#ec4899",  // pink
-  ma30: "#a855f7",  // purple
-  ma60: "#6366f1",  // indigo
+  // 主图指标配色（MA 暖色系 · BOLL 冷色系 — 高对比，深色背景友好）
+  ma5:  "#fef3c7",  // warm white — 极短周期，紧贴价格
+  ma10: "#fbbf24",  // amber
+  ma20: "#fb923c",  // orange
+  ma30: "#f43f5e",  // rose
+  ma60: "#a855f7",  // violet
   ema12: "#06b6d4", // cyan
   ema26: "#0ea5e9", // sky
   ema50: "#3b82f6", // blue
-  bbUpper: "rgba(148, 163, 184, 0.6)",
-  bbMid: "#cbd5e1",
-  bbLower: "rgba(148, 163, 184, 0.6)",
+  bbUpper: "rgba(96, 165, 250, 0.85)",  // sky blue — 上轨
+  bbMid:   "#22d3ee",                    // cyan — 中轨（视觉锚）
+  bbLower: "rgba(96, 165, 250, 0.85)",  // sky blue — 下轨
   vwap: "#f472b6",
   // 副图指标
   rsi: "#fb923c",
@@ -446,11 +446,14 @@ export function KlineChart({ candles, symbol, timeframe }: KlineChartProps) {
 
     // 为每个 overlay indicator 预创建 series（主 + extraPlots）
     // 关键视觉调优：lineWidth 必须 ≥ 2 否则在密集 K 线上肉眼几乎看不见
+    // MA / EMA / VWAP / SAR / Supertrend = 2px
+    // BOLL 中轨 = 3px（视觉锚，最粗）；BOLL 上下轨 = 1px（辅助）
     for (const def of OVERLAY_DEFS) {
+      const isBollMain = def.id === "boll";
       seriesRefs.current[def.id] = chart.addSeries(LineSeries, {
         color: def.color,
-        lineWidth: 2,
-        lineStyle: def.id === "boll" ? 2 : 0,
+        lineWidth: isBollMain ? 3 : 2,
+        lineStyle: 0,
         priceLineVisible: false,
         // 主指标（默认开启）显示当前值标签；其它隐藏
         lastValueVisible: !!DEFAULT_ENABLED_OVERLAYS.has(def.id),
@@ -459,12 +462,11 @@ export function KlineChart({ candles, symbol, timeframe }: KlineChartProps) {
       if (def.extraPlots) {
         for (const ep of def.extraPlots) {
           const seriesId = `${def.id}_${ep.id}`;
-          // Span A/B 用 LineSeries（颜色透明）；其它用实线
           const isCloud = def.id === "ichimoku" && (ep.id === "spanA" || ep.id === "spanB");
-          const isBollOrKeltner = def.id === "boll" || def.id === "keltner";
+          const isUpperOrLower = ep.id === "upper" || ep.id === "lower";
           seriesRefs.current[seriesId] = chart.addSeries(LineSeries, {
             color: ep.color,
-            lineWidth: isBollOrKeltner ? 1 : 1,  // 上/下轨细一点，主轨粗一点
+            lineWidth: isUpperOrLower ? 1 : 2,  // 上/下轨 1px 辅助；Ichimoku span 2px
             lineStyle: isCloud ? 0 : 0,
             priceLineVisible: false,
             lastValueVisible: !!DEFAULT_ENABLED_OVERLAYS.has(def.id),

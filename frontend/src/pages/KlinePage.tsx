@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CandlestickChart, RefreshCw } from "lucide-react";
+import { Activity } from "lucide-react";
 
 import { AnalysisPanel } from "@/components/AnalysisPanel";
+import { IndicatorTogglePanel } from "@/components/IndicatorTogglePanel";
 import { KlineChart } from "@/components/KlineChart";
 import { SymbolPicker } from "@/components/SymbolPicker";
 import { TrendAnalysisPanel } from "@/components/TrendAnalysisPanel";
@@ -12,14 +15,38 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton, SkeletonStatCard } from "@/components/ui/Skeleton";
 import { fetchKLines } from "@/lib/api";
+import { loadPreferences, savePreferences, type ChartPreferences } from "@/lib/preferences";
 import { useKlineStore } from "@/stores/klineStore";
 import { useSymbolContext } from "@/stores/symbolContextStore";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 
 export function KlinePage() {
   const { symbol, timeframe, setSymbol, setTimeframe, hydrateFromSearch } = useKlineStore();
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // ── Preferences state ─────────────────────────────────────────────────────
+  const [prefs, setPrefs] = useState<ChartPreferences | null>(null);
+  const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
+
+  // Load prefs on mount
+  useEffect(() => {
+    void loadPreferences().then(setPrefs);
+  }, []);
+
+  const handleIndicatorToggle = async (indicatorId: string, enabled: boolean) => {
+    if (!prefs) return;
+    const next: ChartPreferences = {
+      ...prefs,
+      indicators: {
+        ...prefs.indicators,
+        [indicatorId]: { ...prefs.indicators[indicatorId], enabled },
+      },
+    };
+    setPrefs(next);
+    await savePreferences(next);
+  };
 
   // URL → store: hydrate store from URL searchParams.
   useEffect(() => {
@@ -28,8 +55,6 @@ export function KlinePage() {
   }, [searchParams]);
 
   // Store → URL: after every store change, reflect to URL while preserving other params.
-  // Read the store synchronously (via getState) to avoid using stale selector values
-  // captured during this render commit.
   useEffect(() => {
     const state = useKlineStore.getState();
     const urlSymbol = searchParams.get("symbol");
@@ -49,10 +74,10 @@ export function KlinePage() {
     refetchInterval: 3000,
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: false,
-    staleTime: 1500,
+    staleTime: 3000,
   });
 
-  // Sync symbol/candles to global symbolContextStore — 让 RightSidebar 的合约计算器能跨页面共享
+  // Sync symbol/candles to global symbolContextStore
   useEffect(() => {
     if (!data || data.candles.length === 0) return;
     useSymbolContext.getState().setContext({
@@ -62,23 +87,92 @@ export function KlinePage() {
     });
   }, [data]);
 
-  // Backup manual poller — react-query's setInterval can be throttled by browser when tab is backgrounded,
-  // so we also trigger refetch on a wall-clock interval to guarantee 3s refresh even when hidden.
+  // Click outside to close indicator panel
   useEffect(() => {
-    const id = setInterval(() => {
-      void refetch();
-    }, 3000);
-    return () => clearInterval(id);
-  }, [refetch]);
+    if (!indicatorPanelOpen) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (!target.closest("[data-indicator-panel]")) {
+        setIndicatorPanelOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [indicatorPanelOpen]);
+
+  // Count how many MA + BOLL indicators are currently enabled
+  const maBollCount = prefs
+    ? (["ma5", "ma10", "ma20", "ma30", "ma60", "boll"] as const).filter(
+        (id) => prefs.indicators[id]?.enabled,
+      ).length
+    : 0;
 
   return (
     <div className="flex flex-col gap-5">
-      <SymbolPicker
-        symbol={symbol}
-        timeframe={timeframe}
-        onSymbolChange={setSymbol}
-        onTimeframeChange={setTimeframe}
-      />
+      {/* Top bar: symbol picker + indicator toggle */}
+      <div className="flex items-center gap-3 relative" data-indicator-panel="container">
+        <SymbolPicker
+          symbol={symbol}
+          timeframe={timeframe}
+          onSymbolChange={setSymbol}
+          onTimeframeChange={setTimeframe}
+        />
+
+        {/* Indicator panel toggle button */}
+        <button
+          onClick={() => setIndicatorPanelOpen((p) => !p)}
+          data-testid="indicator-panel-btn"
+          className={cn(
+            "h-10 pl-4 pr-4 rounded-full cursor-pointer",
+            "flex items-center gap-2",
+            "bg-bg-secondary border",
+            "text-sm font-medium text-text-secondary",
+            "hover:text-text-primary hover:bg-bg-tertiary",
+            "border-[rgba(255,240,220,0.08)] hover:border-[rgba(255,240,220,0.16)]",
+            "active:scale-[0.98] transition-all",
+            indicatorPanelOpen && "border-accent/40 text-text-primary",
+          )}
+        >
+          <Activity className="w-4 h-4" />
+          <span>指标</span>
+          {maBollCount > 0 && (
+            <span
+              className={cn(
+                "h-5 min-w-[20px] px-1.5 rounded-full text-[10px] font-bold",
+                "bg-accent/20 text-accent",
+                "inline-flex items-center justify-center leading-none",
+              )}
+            >
+              {maBollCount}
+            </span>
+          )}
+        </button>
+
+        {indicatorPanelOpen && prefs && (
+          <div
+            className={cn(
+              "absolute top-12 left-0 z-50",
+              "w-72 rounded-2xl",
+              "bg-bg-primary border border-[rgba(255,240,220,0.08)]",
+              "shadow-2xl shadow-black/50 overflow-hidden",
+              "animate-slide-down",
+            )}
+            data-indicator-panel="panel"
+          >
+            <div className="px-4 pt-4 pb-3 border-b border-[rgba(255,240,220,0.06)]">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-text-primary">主图指标</span>
+                <span className="text-[11px] text-text-tertiary">
+                  {maBollCount}/6 已启用
+                </span>
+              </div>
+            </div>
+            <div className="p-3">
+              <IndicatorTogglePanel prefs={prefs} onChange={handleIndicatorToggle} />
+            </div>
+          </div>
+        )}
+      </div>
 
       {isLoading && <ChartSkeleton />}
 
@@ -97,7 +191,7 @@ export function KlinePage() {
       {data && data.candles.length > 0 && (
         <>
           <KlineChart
-            key={`${data.symbol}-${data.timeframe}`}
+            key={`${data.symbol}-${data.timeframe}-${prefs ? JSON.stringify(prefs.indicators) : "loading"}`}
             candles={data.candles}
             symbol={data.symbol}
             timeframe={data.timeframe}
@@ -109,7 +203,6 @@ export function KlinePage() {
             symbol={data.symbol}
             timeframe={data.timeframe}
           />
-          {/* FuturesContractPanel 已搬到全局 RightSidebar（layout/RightSidebar.tsx） */}
         </>
       )}
 
@@ -136,13 +229,11 @@ export function KlinePage() {
 function ChartSkeleton() {
   return (
     <div className="flex flex-col gap-3">
-      {/* KPI strip skeleton */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
           <SkeletonStatCard key={i} />
         ))}
       </div>
-      {/* Chart skeleton */}
       <div className="rounded-2xl bg-bg-secondary border border-[rgba(255,240,220,0.06)] overflow-hidden">
         <div className="flex items-end justify-between gap-3 p-5 border-b border-[rgba(255,240,220,0.06)]">
           <Skeleton variant="text" width="120px" height="24px" />
