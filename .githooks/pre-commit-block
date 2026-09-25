@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# pre-commit hook body — 阻止在受保护分支上 commit
+set -e
+PROTECTED_BRANCHES="${PROTECTED_BRANCHES:-main}"
+current="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+for b in $PROTECTED_BRANCHES; do
+  if [[ "$current" == "$b" ]]; then
+    echo ""
+    echo "✗ 拒绝 commit:分支 '$current' 是受保护主线。"
+    echo "  请先切到 feature 分支:"
+    echo "    ./scripts/new-branch.sh <topic>"
+    echo ""
+    exit 1
+  fi
+done

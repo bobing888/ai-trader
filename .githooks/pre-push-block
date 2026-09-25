@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# pre-push hook body — 阻止 force push + 阻止直接 push 受保护分支
+set -e
+PROTECTED_BRANCHES="${PROTECTED_BRANCHES:-main}"
+
+while read local_ref local_sha remote_ref remote_sha; do
+  # 跳过删除
+  [[ "$local_sha" == "0000000000000000000000000000000000000000" ]] && continue
+  branch="${remote_ref#refs/heads/}"
+
+  # force push 检测:remote_sha 不是 0000 且不是 local_sha 的祖先
+  if [[ "$remote_sha" != "0000000000000000000000000000000000000000" ]]; then
+    if ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+      # local 不是 remote 的祖先 = force push
+      for b in $PROTECTED_BRANCHES; do
+        if [[ "$branch" == "$b" ]]; then
+          echo ""
+          echo "✗ 拒绝 force push 到受保护分支 '$branch'。"
+          echo "  如果是误操作,改用:"
+          echo "    git push --force-with-lease origin <feature-branch>"
+          echo ""
+          exit 1
+        fi
+      done
+    fi
+  fi
+
+  # 直接 push 受保护分支 = 警告(默认不阻止,鼓励走 PR;想严格可改成 exit 1)
+  for b in $PROTECTED_BRANCHES; do
+    if [[ "$branch" == "$b" ]]; then
+      echo ""
+      echo "⚠ 警告:正在直接 push 受保护分支 '$branch'。"
+      echo "  推荐流程:从 feat/<topic> 推,然后通过 PR 合入 $branch。"
+      echo "  如确需直接 push,设置 ALLOW_MAIN_PUSH=1 再重试。"
+      if [[ "${ALLOW_MAIN_PUSH:-0}" != "1" ]]; then
+        exit 1
+      fi
+    fi
+  done
+done
