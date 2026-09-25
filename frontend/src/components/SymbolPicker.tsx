@@ -10,7 +10,7 @@ export interface SymbolPickerProps {
   symbol: string;
   timeframe: Timeframe;
   onSymbolChange: (symbol: string) => void;
-  onTimeframeChange: (tf: Timeframe) => void;
+  onTimeframeChange?: (tf: Timeframe) => void;
 }
 
 interface SymbolMeta {
@@ -207,25 +207,27 @@ export function SymbolPicker({
         )}
       </div>
 
-      {/* Timeframe pills */}
-      <div className="flex items-center gap-1 p-1 rounded-full bg-bg-secondary border border-[rgba(255,240,220,0.06)]">
-        {TIMEFRAMES.map((tf) => (
-          <button
-            key={tf}
-            onClick={() => onTimeframeChange(tf)}
-            data-testid={`tf-${tf}`}
-            className={cn(
-              "h-8 px-3 text-xs font-medium rounded-full transition-all duration-150",
-              "active:scale-[0.95]",
-              timeframe === tf
-                ? "bg-accent text-[#140c0c] shadow-[0_0_0_1px_rgba(204,255,0,0.3)]"
-                : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary",
-            )}
-          >
-            {t(`timeframes.${tf}`)}
-          </button>
-        ))}
-      </div>
+      {/* Timeframe pills — optional (only render if parent provides callback) */}
+      {onTimeframeChange && (
+        <div className="flex items-center gap-1 p-1 rounded-full bg-bg-secondary border border-[rgba(255,240,220,0.06)]">
+          {TIMEFRAMES.map((tf) => (
+            <button
+              key={tf}
+              onClick={() => onTimeframeChange(tf)}
+              data-testid={`tf-${tf}`}
+              className={cn(
+                "h-8 px-3 text-xs font-medium rounded-full transition-all duration-150",
+                "active:scale-[0.95]",
+                timeframe === tf
+                  ? "bg-accent text-[#140c0c] shadow-[0_0_0_1px_rgba(204,255,0,0.3)]"
+                  : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary",
+              )}
+            >
+              {t(`timeframes.${tf}`)}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

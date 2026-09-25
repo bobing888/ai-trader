@@ -3,12 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CandlestickChart, RefreshCw } from "lucide-react";
-import { Activity } from "lucide-react";
 
 import { AnalysisPanel } from "@/components/AnalysisPanel";
 import { IndicatorTogglePanel } from "@/components/IndicatorTogglePanel";
 import { KlineChart } from "@/components/KlineChart";
-import { SymbolPicker } from "@/components/SymbolPicker";
 import { TrendAnalysisPanel } from "@/components/TrendAnalysisPanel";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
@@ -19,7 +17,6 @@ import { loadPreferences, savePreferences, type ChartPreferences } from "@/lib/p
 import { useKlineStore } from "@/stores/klineStore";
 import { useSymbolContext } from "@/stores/symbolContextStore";
 import { useTranslation } from "react-i18next";
-import { cn } from "@/lib/utils";
 
 export function KlinePage() {
   const { symbol, timeframe, setSymbol, setTimeframe, hydrateFromSearch } = useKlineStore();
@@ -28,7 +25,6 @@ export function KlinePage() {
 
   // ── Preferences state ─────────────────────────────────────────────────────
   const [prefs, setPrefs] = useState<ChartPreferences | null>(null);
-  const [indicatorPanelOpen, setIndicatorPanelOpen] = useState(false);
 
   // Load prefs on mount
   useEffect(() => {
@@ -87,93 +83,16 @@ export function KlinePage() {
     });
   }, [data]);
 
-  // Click outside to close indicator panel
+  // Backup manual poller
   useEffect(() => {
-    if (!indicatorPanelOpen) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Element;
-      if (!target.closest("[data-indicator-panel]")) {
-        setIndicatorPanelOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [indicatorPanelOpen]);
-
-  // Count how many MA + BOLL indicators are currently enabled
-  const maBollCount = prefs
-    ? (["ma5", "ma10", "ma20", "ma30", "ma60", "boll"] as const).filter(
-        (id) => prefs.indicators[id]?.enabled,
-      ).length
-    : 0;
+    const id = setInterval(() => {
+      void refetch();
+    }, 3000);
+    return () => clearInterval(id);
+  }, [refetch]);
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Top bar: symbol picker + indicator toggle */}
-      <div className="flex items-center gap-3 relative" data-indicator-panel="container">
-        <SymbolPicker
-          symbol={symbol}
-          timeframe={timeframe}
-          onSymbolChange={setSymbol}
-          onTimeframeChange={setTimeframe}
-        />
-
-        {/* Indicator panel toggle button */}
-        <button
-          onClick={() => setIndicatorPanelOpen((p) => !p)}
-          data-testid="indicator-panel-btn"
-          className={cn(
-            "h-10 pl-4 pr-4 rounded-full cursor-pointer",
-            "flex items-center gap-2",
-            "bg-bg-secondary border",
-            "text-sm font-medium text-text-secondary",
-            "hover:text-text-primary hover:bg-bg-tertiary",
-            "border-[rgba(255,240,220,0.08)] hover:border-[rgba(255,240,220,0.16)]",
-            "active:scale-[0.98] transition-all",
-            indicatorPanelOpen && "border-accent/40 text-text-primary",
-          )}
-        >
-          <Activity className="w-4 h-4" />
-          <span>指标</span>
-          {maBollCount > 0 && (
-            <span
-              className={cn(
-                "h-5 min-w-[20px] px-1.5 rounded-full text-[10px] font-bold",
-                "bg-accent/20 text-accent",
-                "inline-flex items-center justify-center leading-none",
-              )}
-            >
-              {maBollCount}
-            </span>
-          )}
-        </button>
-
-        {indicatorPanelOpen && prefs && (
-          <div
-            className={cn(
-              "absolute top-12 left-0 z-50",
-              "w-72 rounded-2xl",
-              "bg-bg-primary border border-[rgba(255,240,220,0.08)]",
-              "shadow-2xl shadow-black/50 overflow-hidden",
-              "animate-slide-down",
-            )}
-            data-indicator-panel="panel"
-          >
-            <div className="px-4 pt-4 pb-3 border-b border-[rgba(255,240,220,0.06)]">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-text-primary">主图指标</span>
-                <span className="text-[11px] text-text-tertiary">
-                  {maBollCount}/6 已启用
-                </span>
-              </div>
-            </div>
-            <div className="p-3">
-              <IndicatorTogglePanel prefs={prefs} onChange={handleIndicatorToggle} />
-            </div>
-          </div>
-        )}
-      </div>
-
       {isLoading && <ChartSkeleton />}
 
       {error && (
@@ -196,7 +115,23 @@ export function KlinePage() {
             symbol={data.symbol}
             timeframe={data.timeframe}
             dataUpdatedAt={dataUpdatedAt}
+            onSymbolChange={setSymbol}
+            onTimeframeChange={setTimeframe}
           />
+
+          {/* Indicator toolbar — 永远展开在 K 线图正上方，方便一键切换 */}
+          {prefs && (
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-text-primary">主图指标</span>
+                <span className="text-[11px] text-text-tertiary">
+                  MA 系列 + BOLL，点击切换显示/隐藏
+                </span>
+              </div>
+              <IndicatorTogglePanel prefs={prefs} onChange={handleIndicatorToggle} />
+            </Card>
+          )}
+
           <AnalysisPanel />
           <TrendAnalysisPanel
             candles={data.candles}

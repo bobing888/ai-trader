@@ -14,6 +14,10 @@ import {
 } from "lightweight-charts";
 
 import type { Candle } from "@/lib/api";
+import { TIMEFRAMES, type Timeframe } from "@/lib/api";
+import { SymbolPicker } from "@/components/SymbolPicker";
+import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 import {
   adx,
   atr,
@@ -44,6 +48,8 @@ export interface KlineChartProps {
   symbol: string;
   timeframe: string;
   dataUpdatedAt?: number;
+  onSymbolChange?: (symbol: string) => void;
+  onTimeframeChange?: (tf: Timeframe) => void;
 }
 
 // ── Colors ───────────────────────────────────────────────────────────────────
@@ -200,7 +206,8 @@ interface Crosshair {
   [k: string]: number | undefined;
 }
 
-export function KlineChart({ candles, symbol, timeframe }: KlineChartProps) {
+export function KlineChart({ candles, symbol, timeframe, onSymbolChange, onTimeframeChange }: KlineChartProps) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const panelContainerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -479,6 +486,37 @@ export function KlineChart({ candles, symbol, timeframe }: KlineChartProps) {
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
+
+    // First-paint fix: prefs are loaded async, so by the time chart is created the
+    // candle/volume effect (deps: [candles, ...]) may have already fired with null refs.
+    // Push the current candles once here to guarantee the user sees red/green bars
+    // immediately, instead of waiting for the next 3s refetch.
+    if (candles.length > 0) {
+      const firstPaintCandles = candles.map((c) => ({
+        time: c.time as UTCTimestamp,
+        open: c.open, high: c.high, low: c.low, close: c.close,
+      }));
+      const firstPaintVolume = candles.map((c) => {
+        const bullish = c.close >= c.open;
+        const isHigh = c.volume > volumeAvg * 1.5;
+        const baseAlpha = isHigh ? 0.85 : 0.32;
+        return {
+          time: c.time as UTCTimestamp,
+          value: c.volume,
+          color: bullish ? `rgba(34, 197, 94, ${baseAlpha})` : `rgba(239, 68, 68, ${baseAlpha})`,
+        };
+      });
+      safeSetData(candleSeries, firstPaintCandles);
+      safeSetData(volumeSeries, firstPaintVolume);
+      try { candleSeries.priceScale().applyOptions({ autoScale: true }); } catch {}
+      try { chart.timeScale().fitContent(); } catch {}
+      centerLatestCandle();
+      requestAnimationFrame(() => {
+        try { chart.timeScale().fitContent(); } catch {}
+        centerLatestCandle();
+      });
+      lastFitKeyRef.current = `${symbol}-${timeframe}`;
+    }
 
     // subscribeClick 自实现 dblclick 检测：350ms 内连续两次 click 视为双击
     // 这样不依赖 DOM dblclick 事件，避免 crosshair 拖动冲突
@@ -836,6 +874,46 @@ export function KlineChart({ candles, symbol, timeframe }: KlineChartProps) {
 
   return (
     <div className="rounded-2xl bg-bg-secondary border border-[rgba(255,240,220,0.06)] overflow-hidden">
+      {/* Top bar: Symbol + Timeframe pills (右上角，与 crosshair bar 同行 — 一目了然) */}
+      <div
+        className="relative flex items-center gap-3 px-5 border-b border-[rgba(255,240,220,0.06)] bg-bg-tertiary/30"
+        style={{ minHeight: "48px" }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-text-tertiary">交易对</span>
+          {onSymbolChange && (
+            <SymbolPicker
+              symbol={symbol}
+              timeframe={timeframe as Timeframe}
+              onSymbolChange={onSymbolChange}
+              // onTimeframeChange 不传 — KlineChart 顶部右侧单独渲染 timeframe pills
+            />
+          )}
+        </div>
+        {/* Spacer pushes timeframe pills to the right (用户要求右上角) */}
+        <div className="flex-1" />
+        {onTimeframeChange && (
+          <div className="flex items-center gap-1 p-1 rounded-full bg-bg-secondary border border-[rgba(255,240,220,0.06)]">
+            {TIMEFRAMES.map((tf) => (
+              <button
+                key={tf}
+                onClick={() => onTimeframeChange(tf)}
+                data-testid={`tf-${tf}`}
+                className={cn(
+                  "h-7 px-2.5 text-[11px] font-medium rounded-full transition-all duration-150",
+                  "active:scale-[0.95]",
+                  timeframe === tf
+                    ? "bg-accent text-[#140c0c] shadow-[0_0_0_1px_rgba(204,255,0,0.3)]"
+                    : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary",
+                )}
+              >
+                {t(`timeframes.${tf}`)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Crosshair values bar — hover K 线时显示当前 bar 的指标快照 */}
       <div
         className="relative flex items-center flex-nowrap gap-x-4 px-5 border-b border-[rgba(255,240,220,0.06)] bg-bg-tertiary/30 overflow-x-auto"
