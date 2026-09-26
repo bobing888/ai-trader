@@ -5,8 +5,13 @@ import { useSearchParams } from "react-router-dom";
 import { CandlestickChart, RefreshCw } from "lucide-react";
 
 import { AnalysisPanel } from "@/components/AnalysisPanel";
+import { IndicatorParamsModal } from "@/components/IndicatorParamsModal";
 import { IndicatorTogglePanel } from "@/components/IndicatorTogglePanel";
 import { KlineChart } from "@/components/KlineChart";
+import {
+  ALL_DEFS,
+  type IndicatorDef,
+} from "@/lib/indicatorRegistry";
 import { TrendAnalysisPanel } from "@/components/TrendAnalysisPanel";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
@@ -18,6 +23,16 @@ import { useKlineStore } from "@/stores/klineStore";
 import { useSymbolContext } from "@/stores/symbolContextStore";
 import { useTranslation } from "react-i18next";
 
+// 用户提到的 8 个指标 — 单一数据源；改这里 = 改面板里的指标范围
+const UNIFIED_INDICATOR_IDS = ["ma30", "boll", "rsi", "rsi6", "rsi24", "macd", "kdj", "stoch"] as const;
+
+/** 从 KlineChart 完整 registry 里筛出 8 个用户提到的指标定义 */
+function getUnifiedDefs(): IndicatorDef[] {
+  return ALL_DEFS.filter((d: IndicatorDef) =>
+    (UNIFIED_INDICATOR_IDS as readonly string[]).includes(d.id),
+  );
+}
+
 export function KlinePage() {
   const { symbol, timeframe, setSymbol, setTimeframe, hydrateFromSearch } = useKlineStore();
   const { t } = useTranslation();
@@ -25,6 +40,8 @@ export function KlinePage() {
 
   // ── Preferences state ─────────────────────────────────────────────────────
   const [prefs, setPrefs] = useState<ChartPreferences | null>(null);
+  // 当前编辑参数的指标 id（null = modal 关）
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Load prefs on mount
   useEffect(() => {
@@ -38,6 +55,22 @@ export function KlinePage() {
       indicators: {
         ...prefs.indicators,
         [indicatorId]: { ...prefs.indicators[indicatorId], enabled },
+      },
+    };
+    setPrefs(next);
+    await savePreferences(next);
+  };
+
+  const handleSaveParams = async (
+    indicatorId: string,
+    params: Record<string, number | string | boolean>,
+  ) => {
+    if (!prefs) return;
+    const next: ChartPreferences = {
+      ...prefs,
+      indicators: {
+        ...prefs.indicators,
+        [indicatorId]: { ...prefs.indicators[indicatorId], params },
       },
     };
     setPrefs(next);
@@ -109,18 +142,54 @@ export function KlinePage() {
 
       {data && data.candles.length > 0 && (
         <>
-          {/* Indicator chip row — 移到 K 线图正上方，点一下 chip 即时切换 */}
-          {prefs && (
-            <Card className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-text-primary">主图指标</span>
-                <span className="text-[11px] text-text-tertiary">
-                  点击 chip 切换显示/隐藏
-                </span>
-              </div>
-              <IndicatorTogglePanel prefs={prefs} onChange={handleIndicatorToggle} />
-            </Card>
-          )}
+          {/* 统一指标管理面板 — 主图叠层 + 副图指标合在一张卡里，按 overlay 分两组 */}
+          {prefs && (() => {
+            const unifiedDefs = getUnifiedDefs();
+            const editingDef = unifiedDefs.find((d) => d.id === editingId);
+            // 8 个指标的默认 params（与 preferences.ts DEFAULT_PREFS 对齐）
+            const defaultParamsFor = (id: string): Record<string, number | string | boolean> => {
+              const map: Record<string, Record<string, number | string | boolean>> = {
+                ma30: { length: 30 },
+                boll: { length: 20, mult: 2.0 },
+                rsi: { length: 14 },
+                rsi6: { length: 6 },
+                rsi24: { length: 24 },
+                macd: { fast: 12, slow: 26, signal: 9 },
+                kdj: { length: 9 },
+                stoch: { k: 14, d: 3 },
+              };
+              return map[id] ?? {};
+            };
+            return (
+              <>
+                <Card className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold text-text-primary">指标管理</span>
+                    <span className="text-[11px] text-text-tertiary">
+                      单击切换 · 右键 / 双击改参数
+                    </span>
+                  </div>
+                  <IndicatorTogglePanel
+                    prefs={prefs}
+                    defs={unifiedDefs}
+                    onChange={handleIndicatorToggle}
+                    onEditParams={setEditingId}
+                  />
+                </Card>
+
+                {editingDef && (
+                  <IndicatorParamsModal
+                    indicatorId={editingId}
+                    label={editingDef.label}
+                    pref={prefs.indicators[editingId!]}
+                    defaultParams={defaultParamsFor(editingId!)}
+                    onSave={handleSaveParams}
+                    onClose={() => setEditingId(null)}
+                  />
+                )}
+              </>
+            );
+          })()}
 
           <KlineChart
             key={`${data.symbol}-${data.timeframe}-${prefs ? JSON.stringify(prefs.indicators) : "loading"}`}

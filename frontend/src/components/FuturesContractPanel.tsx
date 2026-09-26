@@ -90,16 +90,11 @@ export function FuturesContractPanel({ fallbackSymbol = "BTCUSDT" }: FuturesCont
   const ctx = useSymbolContext();
   const symbol = ctx.symbol || fallbackSymbol;
   const candles = ctx.candles;
-  if (candles.length === 0) {
-    return (
-      <Card>
-        <CardBody className="text-center text-text-tertiary text-sm py-12">
-          合约计算器等待 K 线数据…打开 K 线页面后会自动激活。
-        </CardBody>
-      </Card>
-    );
-  }
 
+  // hooks 必须在任何条件 return 之前调用 — 否则 K 线数据加载时
+  // (candles 从 [] 变为非空) 触发 "Rendered more hooks than during the previous render" race。
+  // 这里空 candles 状态下也持有 useState / useMemo，只是 markPrice / stats24h 退化为
+  // 安全 default，UX 由下方早返回兜底。
   const [side, setSide] = useState<Side>("long");
   const [marginMode, setMarginMode] = useState<MarginMode>("isolated");
   const [orderType, setOrderType] = useState<OrderType>("market");
@@ -155,6 +150,16 @@ export function FuturesContractPanel({ fallbackSymbol = "BTCUSDT" }: FuturesCont
 
     return { size, notional, liqPrice, liqDistance, liqDistanceAbs, tpPrice, slPrice, tpPnl, slPnl, riskReward, riskLevel };
   }, [entry, leverage, marginUSDT, side, marginMode, takeProfitPct, stopLossPct]);
+
+  if (candles.length === 0) {
+    return (
+      <Card>
+        <CardBody className="text-center text-text-tertiary text-sm py-12">
+          合约计算器等待 K 线数据…打开 K 线页面后会自动激活。
+        </CardBody>
+      </Card>
+    );
+  }
 
   const RiskIcon = calc.riskLevel.level === "safe" ? TrendingUp : calc.riskLevel.level === "warn" ? AlertTriangle : Flame;
 
