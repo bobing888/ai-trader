@@ -71,7 +71,7 @@
     "totalTrades": "交易数"
   },
   "nav": {
-    "kline": "K 线",
+    "analysis": "分析",
     "recommendations": "推荐单",
     "trades": "交易",
     "backtest": "回测",

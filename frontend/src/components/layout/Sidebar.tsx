@@ -2,14 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  ChevronRight,
-  CandlestickChart,
-  Sparkles,
-  Receipt,
-  History,
   Brain,
+  CandlestickChart,
+  ChevronRight,
+  History,
+  Layers,
+  Receipt,
   Repeat,
   Settings as SettingsIcon,
+  Sparkles,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -88,8 +89,8 @@ export function Sidebar({ onClose, collapsed = false, onToggleCollapse }: Sideba
       <nav className="flex-1 overflow-y-auto">
         <div className={cn("py-2 overflow-hidden", collapsed ? "px-1" : "px-3")}>
           <div className={cn("space-y-1", collapsed ? "flex flex-col items-center" : "")}>
-            <SidebarNavItem to="/" testId="nav-kline" icon={CandlestickChart} end collapsed={collapsed}>
-              {t("nav.kline")}
+            <SidebarNavItem to="/" testId="nav-analysis" icon={Layers} end collapsed={collapsed}>
+              {t("nav.analysis")}
             </SidebarNavItem>
             <SidebarNavItem
               to="/recommendations"

@@ -4,9 +4,9 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { CommandPaletteProvider } from "@/components/ui/CommandPalette";
 import { ToastProvider } from "@/components/ui/Toast";
+import { AnalysisPage } from "@/pages/AnalysisPage";
 import { BacktestPage } from "@/pages/BacktestPage";
 import { FuturesPage } from "@/pages/FuturesPage";
-import { KlinePage } from "@/pages/KlinePage";
 import { RecommendationsPage } from "@/pages/RecommendationsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { StrategyPage } from "@/pages/StrategyPage";
@@ -20,8 +20,8 @@ export default function App() {
           <CommandPaletteProvider>
             <AppLayout>
               <Routes>
-                <Route path="/" element={<KlinePage />} />
-                <Route path="/kline" element={<KlinePage />} />
+                <Route path="/" element={<AnalysisPage />} />
+                <Route path="/analysis" element={<AnalysisPage />} />
                 <Route path="/recommendations" element={<RecommendationsPage />} />
                 <Route path="/trades" element={<TradesPage />} />
                 <Route path="/backtest" element={<BacktestPage />} />

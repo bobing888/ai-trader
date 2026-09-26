@@ -71,7 +71,7 @@
     "totalTrades": "Total Trades"
   },
   "nav": {
-    "kline": "Charts",
+    "analysis": "Analysis",
     "recommendations": "Signals",
     "trades": "Trades",
     "backtest": "Backtest",
