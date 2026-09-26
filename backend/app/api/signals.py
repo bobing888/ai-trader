@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query
 
 from app.api.klines import TimeframeLiteral, _generate_mock_candles
 from app.config import settings
-from app.data import binance_client
+from app.data import binance_client, get_client
 from app.signals import (
     Regime,
     RegimeDetector,
@@ -50,7 +50,7 @@ async def _fetch_candles_for(pair: str, timeframe: str, limit: int) -> list[dict
     if settings.use_mock_data:
         candles = _generate_mock_candles(pair.replace("/", ""), timeframe, min(limit, 500))
         return [c.model_dump() for c in candles]
-    return await binance_client.get_klines(pair.replace("/", ""), timeframe, limit)
+    return await get_client().get_klines(pair.replace("/", ""), timeframe, limit)
 
 
 @router.get("/recommend/{pair}")

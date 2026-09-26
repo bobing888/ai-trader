@@ -1,4 +1,11 @@
-"""K 线数据端点 — Binance 真实数据 / mock 可切换"""
+"""K 线数据端点 — 真实数据 (Binance/OKX) 或 mock 可切换
+
+通过 settings.data_source 选择数据源：
+- 'binance'（默认）走 BinanceClient
+- 'okx'（kbkkk 等被 Binance 限流的地区）走 OkxClient
+两者对外接口相同（get_klines 返回 time/open/high/low/close/volume 格式），
+前端无任何感知，HttpRouter 不变化。
+"""
 
 import math
 from datetime import datetime, timezone
@@ -8,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.config import settings
-from app.data import binance_client
+from app.data import binance_client, get_client, okx_client
 
 router = APIRouter(prefix="", tags=["klines"])
 
@@ -111,11 +118,11 @@ async def get_klines(
         candles = _generate_mock_candles(symbol, timeframe, min(limit, 500))
         return KLinesResponse(symbol=symbol, timeframe=timeframe, candles=candles, count=len(candles))
 
-    # 真实 Binance 数据
+    # 真实 Binance / OKX 数据（按 settings.data_source 选）
     try:
-        raw = await binance_client.get_klines(symbol, timeframe, limit)
+        raw = await get_client().get_klines(symbol, timeframe, limit)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Binance upstream error: {e}")
+        raise HTTPException(status_code=502, detail=f"Upstream error: {e}")
 
     if not raw:
         raise HTTPException(status_code=404, detail=f"Symbol {symbol} not found or no data")

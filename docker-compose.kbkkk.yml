@@ -1,0 +1,29 @@
+# kbkkk-prod 专用 override — 仅在 kbkkk 部署时使用
+# 用法: docker compose -f docker-compose.yml -f docker-compose.kbkkk.yml ...
+#
+# 注意: compose 的 ports/volumes 是 ADDITIVE merge (不能 replace)
+# 所以 ports/volumes 的差异必须在主 compose 上 sed 处理 (deploy-kbkkk.sh Step 4b)
+# 本 override 负责:
+#   1. frontend build args.NGINX_CONF=nginx-kbkkk.conf (纯 HTTP, 无 HTTPS 重定向)
+#   2. backend env: DATA_SOURCE=okx (kbkkk 香港 IP 被 Binance 限流, 切到 OKX 公开 API)
+#   3. CORS 加 kbkkk 域名 (kbkkk.com / www.kbkkk.com / IP)
+#   4. frontend ports/volumes 在 deploy-kbkkk.sh Step 4b 同步 sed 主 compose
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      network: host
+      args:
+        NGINX_CONF: nginx-kbkkk.conf
+
+  backend:
+    environment:
+      # kbkkk 香港 IP 被 Binance 限流 (HTTP 451 "restricted location")
+      # 2026-09-26 切到 OKX 公开 API: data_source=okx
+      # 2026-09-23 OKX 在香港可达 (200 OK, 200ms)
+      AI_TRADER_DATA_SOURCE: "okx"
+      AI_TRADER_USE_MOCK_DATA: "false"
+      AI_TRADER_BINANCE_BASE_URL: "https://api.binance.com"
+      AI_TRADER_OKX_BASE_URL: "https://www.okx.com"
+      AI_TRADER_CORS_ORIGINS_RAW: "http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80,http://154.219.111.145,http://kbkkk.com,http://www.kbkkk.com,http://206.187.211.211,https://kbkkk.com,https://www.kbkkk.com"

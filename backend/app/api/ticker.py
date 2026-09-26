@@ -1,13 +1,25 @@
-"""Ticker 端点 — 实时行情"""
+"""Ticker 端点 — 实时行情（Binance / OKX / mock 切换）
+
+通过 settings.data_source 选择：
+  - 'binance'（默认）走 BinanceClient → source='binance'
+  - 'okx'（kbkkk 等）走 OkxClient → source='okx'
+  - mock 模式 (use_mock_data=true) → 全返 0
+"""
 
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
 from app.config import settings
-from app.data import binance_client
+from app.data import get_client
 
 router = APIRouter(prefix="/ticker", tags=["ticker"])
+
+
+def _source_label() -> str:
+    if settings.use_mock_data:
+        return "mock"
+    return (settings.data_source or "binance").lower()
 
 
 @router.get("/batch")
@@ -30,8 +42,8 @@ async def get_ticker_batch(
             "source": "mock",
         }
 
-    tickers = await binance_client.get_tickers_batch(symbol_list)
-    return {"tickers": tickers, "source": "binance"}
+    tickers = await get_client().get_tickers_batch(symbol_list)
+    return {"tickers": tickers, "source": _source_label()}
 
 
 @router.get("/{symbol}")
@@ -41,7 +53,7 @@ async def get_ticker_one(symbol: str) -> dict:
     if settings.use_mock_data:
         return {"symbol": symbol, "price": 0.0, "change_24h": 0.0, "source": "mock"}
 
-    ticker = await binance_client.get_ticker(symbol)
+    ticker = await get_client().get_ticker(symbol)
     if not ticker:
         raise HTTPException(status_code=404, detail=f"Symbol {symbol} not found")
-    return {**ticker, "source": "binance"}
+    return {**ticker, "source": _source_label()}
