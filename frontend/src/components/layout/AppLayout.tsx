@@ -1,13 +1,13 @@
 import { useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { ChevronRight, CandlestickChart, Sparkles, Receipt, History, Settings as SettingsIcon } from "lucide-react";
+import { ChevronRight, History, Layers, Receipt, Settings as SettingsIcon, Sparkles } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { RightSidebar } from "./RightSidebar";
 import { cn } from "@/lib/utils";
 
 const MOBILE_TABS = [
-  { to: "/", label: "K 线", icon: CandlestickChart, testId: "mob-kline", end: true },
+  { to: "/", label: "分析", icon: Layers, testId: "mob-analysis", end: true },
   { to: "/recommendations", label: "信号", icon: Sparkles, testId: "mob-rec" },
   { to: "/trades", label: "交易", icon: Receipt, testId: "mob-trades" },
   { to: "/backtest", label: "回测", icon: History, testId: "mob-backtest" },
