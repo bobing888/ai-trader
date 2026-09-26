@@ -51,7 +51,14 @@ class Settings(BaseSettings):
     binance_testnet: bool = True
     binance_base_url: str = "https://api.binance.com"
 
-    # 数据源：mock = 本地生成，binance = 真实公开 API
+    # OKX 公开 API（kbkkk 等 Binance 被限流地区使用）
+    okx_base_url: str = "https://www.okx.com"
+
+    # 数据源选择: 'binance' | 'okx'。'binance' 为默认（dyddd 等地区）。
+    # 留 empty / None 走向后兼容 = binance。
+    data_source: str = "binance"
+
+    # 数据源：mock = 本地生成，<data_source> = 真实公开 API
     use_mock_data: bool = False
 
     # Redis 缓存（避免 Binance 公开 API 限流）

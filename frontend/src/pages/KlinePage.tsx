@@ -116,14 +116,6 @@ export function KlinePage() {
     });
   }, [data]);
 
-  // Backup manual poller
-  useEffect(() => {
-    const id = setInterval(() => {
-      void refetch();
-    }, 3000);
-    return () => clearInterval(id);
-  }, [refetch]);
-
   return (
     <div className="flex flex-col gap-5">
       {isLoading && <ChartSkeleton />}

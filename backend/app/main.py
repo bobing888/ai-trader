@@ -16,7 +16,7 @@ from app.api.strategies import router as strategies_router
 from app.api.ticker import router as ticker_router
 from app.api.trades import router as trades_router
 from app.config import settings
-from app.data import binance_client
+from app.data import binance_client, get_client, okx_client
 from app.db.session import init_db
 from app.services import github_sync as gh
 
@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 启动时初始化两个 client（按 settings.data_source 实际只用其中一个, 但都 init 保证健康探测）
     await binance_client.init()
+    await okx_client.init()
     init_db()
     # 启动 GitHub sync 后台循环
     sync_task = None
@@ -42,6 +44,7 @@ async def lifespan(app: FastAPI):
             except (asyncio.CancelledError, Exception):
                 pass
         await binance_client.close()
+        await okx_client.close()
 
 
 def create_app() -> FastAPI:

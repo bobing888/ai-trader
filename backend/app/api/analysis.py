@@ -23,7 +23,7 @@ from app.config import settings
 from app.analytics.statistical import hurst_exponent, fractal_dimension, shannon_entropy
 from app.analytics.trend import trend_strength
 from app.analytics.volatility import volatility_percentile
-from app.data import binance_client
+from app.data import binance_client, get_client
 from app.signals.regime import RegimeDetector
 from app.signals import STRATEGY_INSTANCES
 from app.signals.aggregator import SignalAggregator
@@ -37,7 +37,7 @@ async def _fetch_candles(symbol: str, timeframe: str, limit: int) -> list[dict]:
     if settings.use_mock_data:
         candles = _generate_mock_candles(symbol, timeframe, min(limit, 500))
         return [c.model_dump() for c in candles]
-    return await binance_client.get_klines(symbol, timeframe, limit)
+    return await get_client().get_klines(symbol, timeframe, limit)
 
 
 def _describe_regime(regime: str, confidence: float) -> str:
