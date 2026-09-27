@@ -11,7 +11,10 @@ REMOTE_DIR="/opt/ai-trader/ai-trader"
 STAGING_DIR="/opt/ai-trader-staging"
 BACKUP_DIR="/opt/ai-trader-backup"
 LOCAL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-KBKKK_PASS='9Q35cnE2s7DX'
+KBKKK_PASS='9Q35cnE2s7DX"
+
+# BuildKit 缓存目录（kbkkk 服务器本地，默认 docker buildkit 路径）
+REMOTE_BUILDKIT_CACHE="${REMOTE_BUILDKIT_CACHE:-/var/lib/docker/buildkit}"
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1,33m'; BLUE='\033[0,34m'; NC='\033[0m'
@@ -78,15 +81,24 @@ ssh_k "
 "
 ok "swap 完成 (backup=${BACKUP_DIR})"
 
-# ── Step 4: docker compose build ─────────────────────────────────────────
-log "Step 4/6: docker compose build (kbkkk override 启用纯 HTTP nginx + 127.0.0.1:8123 端口)..."
-ssh_k "cd ${REMOTE_DIR} && docker compose -f docker-compose.yml -f docker-compose.kbkkk.yml build --no-cache backend frontend" 2>&1 | tail -10
+# ── Step 4: 预拉基础镜像 + BuildKit 增量 build ────────────────────────────
+log "Step 4/7: 预拉基础镜像..."
+ssh_k "cd ${REMOTE_DIR} && bash scripts/preload-base-images.sh" || {
+  err "预拉基础镜像失败 — 检查 docker.io 访问"
+  exit 1
+}
+
+# BuildKit 默认走 docker cache. 2026-09-27 决定: 暂时保留 plain docker compose build (--no-cache 见下)
+# 因为 nginx:1.27-alpine 在 server 没有 named tag, docker.io HEAD timeout 会 fail.
+# preload step (上一行) 是 warm-up 备用, 当 named tag 配齐后下次 PR 可 drop --no-cache
+log "Step 5/7: docker compose build (保守 --no-cache)..."
+ssh_k "cd ${REMOTE_DIR} && docker compose -f docker-compose.yml -f docker-compose.kbkkk.yml build --no-cache backend frontend" 2>&1 | tail -5
 ok "build 完成"
 
-# ── Step 4b: kbkkk 端额外 patch（compose ports/volumes 是 additive merge）
+# ── Step 6: kbkkk 端额外 patch（compose ports/volumes 是 additive merge）────
 #    override 不能删主 compose 里的 80:80 + 443:443 + ssl volume, 必须 sed
 #    但 ports 字段不能为空 (yaml 验证会拒), 改成 127.0.0.1:8123:80
-log "Step 4b: kbkkk 端 sed 改主 compose frontend ports/volumes (override merge 是 additive)..."
+log "Step 6/7: kbkkk 端 sed 改主 compose frontend ports/volumes (override merge 是 additive)..."
 ssh_k "bash -s" << 'KBKKK_PATCH'
 set -e
 F=/opt/ai-trader/ai-trader/docker-compose.yml
@@ -132,13 +144,13 @@ sed -n '/^  frontend:/,/^volumes:/p' "$F" | head -20
 KBKKK_PATCH
 ok "kbkkk 端 compose patch 完成"
 
-# ── Step 5: docker compose up ────────────────────────────────────────────
-log "Step 5/6: docker compose up -d (kbkkk override)..."
+# ── Step 7: docker compose up ────────────────────────────────────────────
+log "Step 7/7: docker compose up -d (kbkkk override)..."
 ssh_k "cd ${REMOTE_DIR} && docker compose -f docker-compose.yml -f docker-compose.kbkkk.yml up -d --force-recreate --no-deps backend frontend" 2>&1 | tail -15
 ok "up 完成"
 
-# ── Step 6: 健康检查 ──────────────────────────────────────────────────────
-log "Step 6/6: 健康检查 (max 90s)..."
+# ── 健康检查（不计入步骤编号）────────────────────────────────────────────
+log "[health] 健康检查 (max 90s)..."
 HEALTHY=false
 for i in $(seq 1 18); do
   STATUS=$(ssh_k "docker inspect --format='{{.State.Health.Status}}' ai-trader-backend 2>/dev/null || echo starting")

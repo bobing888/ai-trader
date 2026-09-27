@@ -122,25 +122,30 @@ Shadowsocks: 端口 51888，systemd 守护（详见 §8）
 | RC5 | 老容器 healthy 状态被误判成新容器 healthy | 假阳性 | `scripts/deploy.sh` 等 Docker `State.Health.Status == healthy`，再加 HTTP `/api/health` 真请求 + WS import 自检 |
 | RC6 | DNS / 域名变更后忘了同步改 `AI_TRADER_CORS_ORIGINS_RAW` | 浏览器报 `Disallowed CORS origin`，但 `curl` 看 health 是 200 | 任何 DNS / 域名 / 端口变更都先在 `docker-compose.yml` 改 CORS → `docker compose up -d backend` → 用 `curl -H "Origin: <新域名>" -X OPTIONS -i https://<新域名>/api/health` 验 |
 
-## 2. 推荐：直接跑 `scripts/deploy.sh`
+## 2. 推荐：直接跑 `scripts/deploy.sh`（BuildKit cached，~40s vs 3min）
 
 ```bash
 bash scripts/deploy.sh
-# 自动完成：
+# 自动完成（v2 流程，2026-09-27+）：
 #   Step 0/6: SSH 联通检查
-#   Step 1/6: 本地预检 (pytest 345 cases + .env 存在性 + web/dist 构建)
-#   Step 2/6: rsync 本地 → /opt/ai-trader-staging/ (原子准备)
-#   Step 3/6: 服务器侧 atomic swap (mv 老目录到 backup，mv staging → 目标)
-#   Step 4/6: docker compose build + up -d --force-recreate --no-deps backend
-#   Step 5/6: 等健康检查（最多 60s）+ HTTP `/api/health` 真请求
-#   Step 6/6: 容器内 WS 模块 import 自检
-# 失败时：自动 rollback（用 /opt/ai-trader-backup 还原）+ 输出 logs
+#   Step 1/6: 本地预检 (frontend/package.json + # syntax=docker directive)
+#   Step 2/6: rsync 本地 → /opt/ai-trader/ai-trader/ (排除 .env/.git/node_modules)
+#   Step 3/6: 预拉基础镜像 (python:3.12-slim / node:20-alpine / nginx:1.27-alpine)
+#   Step 4/6: BuildKit 增量 build (--cache-from/to type=local,mode=max) → ~40s
+#   Step 5/6: docker compose up -d --force-recreate --no-deps
+#   Step 6/6: 健康检查（最多 60s）+ HTTP `/api/health` 真请求
+# 失败时：set -e 终止，留 staging 让用户 inspect（kbkkk 自动 rollback）
 ```
+
+**关键技术（避免重复拉镜像的关键 §10.）**：
+- **BuildKit cache mount** (Dockerfile 内 `RUN --mount=type=cache,target=/root/.cache/pip` 等) — 服务器本地 `~/.local/share/pnpm/store`、`/root/.cache/pip` 不被每次清空
+- **`type=local,mode=max`** — docker buildx 把所有 build 层（含 intermediate）写到 `/var/lib/buildkit-cache/ai-trader/`
+- **`preload-base-images.sh`** — deploy 前先 `docker pull` 三大基础镜像（python/node/nginx）到本地，deploy 中途不会卡 pull
 
 退出码：
 - `0` = 成功
 - `1` = 通用错误（pytest 失败 / .env 缺失）
-- `2` = 健康检查超时（已自动回滚）
+- `2` = 健康检查超时（kbkkk 已自动回滚；dyddd 留 staging）
 - `3` = SSH 连不上
 
 ## 3. 手动排查模式（debug 用）

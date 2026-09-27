@@ -1,0 +1,26 @@
+# backend .dockerignore — keeps test/cache/temp junk out of build context
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+tests/
+*.egg-info/
+build/
+dist/
+.git/
+.github/
+.cursor/
+.claude/
+.idea/
+*.log
+.env
+.env.local
+.env.*.local
+README.md
