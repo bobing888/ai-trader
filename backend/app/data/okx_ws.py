@@ -38,7 +38,7 @@ class _Subscription:
     """跟踪一个订阅的信息。"""
     channel: str
     inst_id: str
-    queue: "asyncio.Queue[dict[str, Any]]" = field(default_factory=asyncio.Queue)
+    queue: asyncio.Queue[dict[str, Any]] = field(default_factory=asyncio.Queue)
 
 
 class OkxWsClient:
@@ -57,7 +57,7 @@ class OkxWsClient:
     """
 
     def __init__(self) -> None:
-        self._conn: "WsConnection | None" = None
+        self._conn: WsConnection | None = None
         self._recv_task: asyncio.Task[Any] | None = None
         self._ping_task: asyncio.Task[Any] | None = None
         self._running = False
@@ -112,7 +112,7 @@ class OkxWsClient:
     # ------------------------------------------------------------------
     # 公开订阅 API
     # ------------------------------------------------------------------
-    async def subscribe_candles(self, inst: str, channel: str = "candle1m") -> "asyncio.Queue[dict[str, Any]]":
+    async def subscribe_candles(self, inst: str, channel: str = "candle1m") -> asyncio.Queue[dict[str, Any]]:
         """订阅 K 线，返回推送队列。
 
         channel 支持: candle1m / candle5m / candle15m / candle1H / candle4H / candle1D。
@@ -128,7 +128,7 @@ class OkxWsClient:
                     await self._send_subscribe([{"channel": channel, "instId": inst}])
         return sub.queue
 
-    async def subscribe_tickers(self, inst: str) -> "asyncio.Queue[dict[str, Any]]":
+    async def subscribe_tickers(self, inst: str) -> asyncio.Queue[dict[str, Any]]:
         """订阅 ticker，返回推送队列。推送 {inst, last, open24h, ts}。"""
         channel = "tickers"
         key = (inst, channel)
@@ -216,12 +216,12 @@ class OkxWsClient:
             if parsed is not None:
                 await queue.put(parsed)
 
-    def _find_queue(self, inst_id: str, channel: str) -> "asyncio.Queue[dict[str, Any]] | None":
+    def _find_queue(self, inst_id: str, channel: str) -> asyncio.Queue[dict[str, Any]] | None:
         key = (inst_id, channel)
         sub = self._subs.get(key)
         return sub.queue if sub else None
 
-    def _parse(self, channel: str, item: "list[Any]") -> "dict[str, Any] | None":
+    def _parse(self, channel: str, item: list[Any]) -> dict[str, Any] | None:
         """将 OKX ws data 字段解析为 dict。
 
         OKX V5 candle data 格式:
@@ -259,7 +259,7 @@ class OkxWsClient:
             logger.warning("[OKX WS] parse error (%s): %s — %s", channel, item, exc)
         return None
 
-    async def _send_subscribe(self, args: "list[dict[str, str]]") -> None:
+    async def _send_subscribe(self, args: list[dict[str, str]]) -> None:
         """发送订阅帧。"""
         frame: dict[str, Any] = {"op": "subscribe", "args": args}
         await self._conn.send(json.dumps(frame))  # type: ignore[union-attr]
