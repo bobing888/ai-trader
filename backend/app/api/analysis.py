@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException, Query
 from app.api.klines import TimeframeLiteral, _generate_mock_candles
 from app.config import settings
 from app.analytics.statistical import hurst_exponent, fractal_dimension, shannon_entropy
-from app.analytics.trend import trend_strength
+from app.analytics.trend import trend_strength, multi_indicator_confluence
 from app.analytics.volatility import volatility_percentile
 from app.data import binance_client, get_client
 from app.signals.regime import RegimeDetector
@@ -109,6 +109,9 @@ async def analyze(
 
     # 2. Trend (ADX)
     trend_out = trend_strength(highs, lows, closes, period=14)
+
+    # 2b. Multi-indicator confluence
+    trend_out["confluence"] = multi_indicator_confluence(highs, lows, closes, volumes)
 
     # 3. Volatility percentile
     vol_out = volatility_percentile(closes, highs, lows, period=14, lookback=min(len(closes), 8760))

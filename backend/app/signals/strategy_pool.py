@@ -19,6 +19,7 @@ class StrategyId(Enum):
     SENTIMENT = "sentiment"          # 情绪反向（适用于 BEAR）
     VOLUME = "volume_profile"       # 量价共振（通用）
     MULTI_TF = "multi_timeframe"   # 多周期共振（通用，信号质量最高）
+    CONFLUENCE = "confluence"       # 多指标共振评分（通用）
 
 
 @dataclass(frozen=True, slots=True)
@@ -382,6 +383,67 @@ class MultiTimeframeStrategy:
         )
 
 
+class ConfluenceStrategy:
+    """多指标共振策略：基于 multi_indicator_confluence 评分决策"""
+    ID = StrategyId.CONFLUENCE
+
+    def evaluate(self, candles: dict, volumes: np.ndarray, regime: str) -> StrategyResult:
+        from app.analytics.trend import multi_indicator_confluence
+
+        close = np.array(candles["close"], dtype=np.float64)
+        high = np.array(candles["high"], dtype=np.float64)
+        low = np.array(candles["low"], dtype=np.float64)
+        vol = np.array(volumes, dtype=np.float64)
+
+        result = multi_indicator_confluence(high, low, close, vol)
+        score = result["confluence_score"]
+
+        reasons = []
+        direction = None
+        confidence = 0.0
+
+        if score >= 75:
+            # 强信号：方向由多空一致最多的指标决定
+            # 综合 MACD、MA30、ADX 方向判断
+            macd_status = result["macd"]["status"]
+            price_vs_ma30 = result["price_vs_ma30"]
+            adx_val = result["adx14"]["adx"]
+            pdi = result["adx14"]["pdi"]
+            ndi = result["adx14"]["ndi"]
+
+            if macd_status in ("bullish_cross", "above_zero") or price_vs_ma30 in ("above", "cross_above"):
+                direction = "long"
+                reasons.append(f"多指标共振看多（Confluence Score={score}）")
+            elif macd_status in ("bearish_cross") or price_vs_ma30 in ("below", "cross_below"):
+                direction = "short"
+                reasons.append(f"多指标共振看空（Confluence Score={score}）")
+            else:
+                direction = "long" if pdi > ndi else "short"
+                reasons.append(f"多指标共振（Confluence Score={score}）")
+            confidence = 0.85
+        elif 60 <= score < 75:
+            direction = "long" if result["macd"]["status"] in ("bullish_cross", "above_zero") else "short"
+            reasons.append(f"中等共振信号（Confluence Score={score}）")
+            confidence = 0.70
+        elif 45 <= score < 60:
+            reasons.append(f"弱共振信号（Confluence Score={score}）")
+            confidence = 0.55
+        else:
+            reasons.append(f"无共振信号（Confluence Score={score} < 45）")
+            direction = None
+            confidence = 0.0
+
+        return StrategyResult(
+            strategy=self.ID,
+            pair=candles.get("symbol", "UNKNOWN"),
+            timeframe=candles.get("timeframe", "1h"),
+            direction=direction,
+            confidence=max(0, min(1, confidence)),
+            reasons=tuple(reasons),
+            suitable_regimes=frozenset(["bull", "bear", "choppy"]),
+        )
+
+
 # ─── 策略池 ──────────────────────────────────────────────────────────────────
 
 STRATEGY_INSTANCES: dict[StrategyId, Strategy] = {
@@ -392,4 +454,5 @@ STRATEGY_INSTANCES: dict[StrategyId, Strategy] = {
     StrategyId.SENTIMENT: SentimentStrategy(),
     StrategyId.VOLUME: VolumeProfileStrategy(),
     StrategyId.MULTI_TF: MultiTimeframeStrategy(),
+    StrategyId.CONFLUENCE: ConfluenceStrategy(),
 }
