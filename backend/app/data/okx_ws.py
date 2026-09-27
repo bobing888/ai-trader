@@ -94,7 +94,7 @@ class OkxWsClient:
         self._running = True
         self._retry_count = 0
         # 后台 task：connect_loop 接管重连 / 心跳 / 收发
-        self._connect_task = asyncio.create_task(self._connect_loop())
+        self._connect_task = asyncio.create_task(self._connect_and_subscribe())
 
     async def stop(self) -> None:
         """优雅关闭。"""
