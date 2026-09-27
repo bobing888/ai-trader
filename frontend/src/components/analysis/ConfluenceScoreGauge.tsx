@@ -4,6 +4,7 @@
  */
 
 import { Badge } from "@/components/ui/Badge";
+import { ConfluenceDirectionBadge } from "./ConfluenceDirectionBadge";
 import type { ConfluenceInfo } from "@/lib/api";
 
 // ── Color helpers ─────────────────────────────────────────────────────────────
@@ -97,9 +98,13 @@ export function ConfluenceScoreGauge({ confluence }: Props) {
 
   return (
     <div className="flex flex-col items-center gap-3">
-      {/* Title */}
-      <div className="flex flex-col items-center">
-        <span className="text-[9px] text-text-tertiary uppercase tracking-widest">多指标共振</span>
+      {/* Direction badge + title */}
+      <div className="flex flex-col items-center gap-1">
+        <ConfluenceDirectionBadge
+          direction={confluence.signal_direction ?? "mixed"}
+          score={confluence.confluence_score}
+        />
+        <span className="text-[9px] text-text-tertiary uppercase tracking-widest">多指标共识 · 方向</span>
       </div>
 
       {/* SVG Arc */}

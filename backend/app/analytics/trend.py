@@ -1,6 +1,9 @@
 """趋势强度指标 — ADX + +DI / -DI + MACD + SMA + 多指标共振"""
 
+from __future__ import annotations
+
 import numpy as np
+from typing import Literal
 
 
 def adx(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 14) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -107,6 +110,85 @@ def trend_strength(high: np.ndarray, low: np.ndarray, close: np.ndarray, period:
         "strength_label": label,
         "direction": direction,
     }
+
+
+def derive_signal_direction(
+    ma30_state: str,
+    macd_status: str,
+    rsi_zone: str,
+    pdi: float,
+    ndi: float,
+) -> Literal["long", "short", "mixed"]:
+    """
+    从子指标组合推导方向信号。
+
+    Long 票（+1）：
+      - MA30 is above / cross_above
+      - MACD is bullish_cross / above_zero
+      - RSI is neutral or oversold (oversold = 空头过度，有反弹潜力)
+      - PDI > NDI（明确多头动能）
+
+    Short 票（-1）：
+      - MA30 is below / cross_below
+      - MACD is bearish_cross / below_zero
+      - RSI is overbought（多头过度，有回调风险）
+      - PDI < NDI（明确空头动能）
+
+    规则：
+      - >= 3 票同向 → 该方向
+      - RSI overbought 强力否决 long（防追高）
+      - PDI <= NDI 时否决 long（无方向动能则不追）
+      - PDI >= NDI 时否决 short（无空头动能则不做空）
+      - 否则 → mixed
+    """
+    long_votes = 0
+    short_votes = 0
+
+    # MA30
+    if ma30_state in ("above", "cross_above"):
+        long_votes += 1
+    elif ma30_state in ("below", "cross_below"):
+        short_votes += 1
+
+    # MACD
+    if macd_status in ("bullish_cross", "above_zero"):
+        long_votes += 1
+    elif macd_status in ("bearish_cross", "below_zero"):
+        short_votes += 1
+
+    # RSI zone
+    if rsi_zone == "neutral":
+        long_votes += 1
+    elif rsi_zone == "oversold":
+        long_votes += 1
+    elif rsi_zone == "overbought":
+        short_votes += 1
+
+    # ADX PDI vs NDI — 仅在有明确方向时计票
+    if pdi > ndi:
+        long_votes += 1
+    elif ndi > pdi:
+        short_votes += 1
+    # PDI == NDI → 无方向票
+
+    # Veto: RSI overbought 强力否决 long
+    if rsi_zone == "overbought" and long_votes >= 3:
+        return "mixed"
+
+    # Veto: PDI <= NDI 时否决 long（无多头动能则不追）
+    if pdi <= ndi and long_votes >= 3:
+        return "mixed"
+
+    # Veto: PDI >= NDI 时否决 short（无空头动能则不做空）
+    if pdi >= ndi and short_votes >= 3:
+        return "mixed"
+
+    if long_votes >= 3:
+        return "long"
+    elif short_votes >= 3:
+        return "short"
+    else:
+        return "mixed"
 
 
 def multi_indicator_confluence(
@@ -320,6 +402,15 @@ def multi_indicator_confluence(
 
     confluence_score = max(0, min(100, score))
 
+    # 从子指标推导方向
+    direction = derive_signal_direction(
+        ma30_state=price_vs_ma30,
+        macd_status=macd_status,
+        rsi_zone=rsi_zone,
+        pdi=pdi_val,
+        ndi=ndi_val,
+    )
+
     return {
         "ma30": ma30_val,
         "price_vs_ma30": price_vs_ma30,
@@ -342,4 +433,5 @@ def multi_indicator_confluence(
         "adx14": adx_dict,
         "volume_ratio": volume_ratio,
         "confluence_score": confluence_score,
+        "signal_direction": direction,
     }

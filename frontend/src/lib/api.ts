@@ -330,6 +330,7 @@ export interface ConfluenceInfo {
   adx14: { adx: number; pdi: number; ndi: number };
   volume_ratio: number;
   confluence_score: number; // 0-100
+  signal_direction?: "long" | "short" | "mixed"; // derived from sub-indicators
 }
 
 export interface TrendInfo {
