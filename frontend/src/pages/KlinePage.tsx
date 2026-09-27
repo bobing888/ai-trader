@@ -2,12 +2,14 @@
  * KlinePage — real-time K-line demo page.
  *
  * Connects to the OKX WebSocket bridge and renders live candles via
- * lightweight-charts.  Markers are stubbed (wired for PR #4).
+ * lightweight-charts.  Notification markers appear on the chart for regime-shift
+ * events fetched from /api/notifications.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-import { LightweightKlineChart } from "@/components/charts/LightweightKlineChart";
+import { LightweightKlineChart, type KlineMarker } from "@/components/charts/LightweightKlineChart";
+import { useNotificationContext } from "@/components/notifications/NotificationProvider";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { useRealtimeKlines, type Channel } from "@/lib/useRealtimeKlines";
@@ -37,6 +39,41 @@ const STATUS_TONE: Record<string, "bull" | "bear" | "warning" | "info"> = {
   down: "bear",
 };
 
+// ── marker mapping ────────────────────────────────────────────────────────────
+
+const MARKER_MAP: Array<{
+  shift_type: Notification["shift_type"];
+  color: string;
+  position: KlineMarker["position"];
+  shape: KlineMarker["shape"];
+  text: KlineMarker["text"];
+}> = [
+  { shift_type: "volatility_spike",      color: "#f97316", position: "aboveBar", shape: "arrowUp", text: "V"    },
+  { shift_type: "volume_surge",         color: "#3b82f6", position: "aboveBar", shape: "circle", text: "Vol"  },
+  { shift_type: "trend_break",          color: "#ef4444", position: "aboveBar", shape: "square", text: "TB"   },
+  { shift_type: "correlation_breakdown", color: "#a855f7", position: "belowBar", shape: "arrowDown", text: "Corr" },
+];
+
+type Notification = import("@/lib/useNotifications").Notification;
+
+function notificationsToMarkers(notifications: Notification[]): KlineMarker[] {
+  return notifications
+    .map((n) => {
+      const mapEntry = MARKER_MAP.find((m) => m.shift_type === n.shift_type);
+      if (!mapEntry) return null;
+      const ts = n.context.kline_ts as number | undefined;
+      if (!ts) return null;
+      return {
+        time: ts,
+        position: mapEntry.position,
+        color: mapEntry.color,
+        shape: mapEntry.shape,
+        text: mapEntry.text,
+      } satisfies KlineMarker;
+    })
+    .filter((m): m is KlineMarker => m !== null);
+}
+
 function formatTimeAgo(date: Date | null): string {
   if (!date) return "—";
   const diffMs = Date.now() - date.getTime();
@@ -52,6 +89,9 @@ export function KlinePage() {
   const [channel, setChannel] = useState<Channel>("candle1m");
 
   const { candles, status, lastUpdate } = useRealtimeKlines(inst, channel);
+  const { notifications } = useNotificationContext();
+
+  const markers = useMemo(() => notificationsToMarkers(notifications), [notifications]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -103,7 +143,7 @@ export function KlinePage() {
         <LightweightKlineChart
           candles={candles}
           height={520}
-          markers={[]}
+          markers={markers}
         />
       </Card>
 
