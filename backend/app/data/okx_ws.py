@@ -60,6 +60,7 @@ class OkxWsClient:
         self._conn: WsConnection | None = None
         self._recv_task: asyncio.Task[Any] | None = None
         self._ping_task: asyncio.Task[Any] | None = None
+        self._connect_task: asyncio.Task[Any] | None = None
         self._running = False
         self._lock = asyncio.Lock()
 
@@ -83,16 +84,26 @@ class OkxWsClient:
     # 生命周期
     # ------------------------------------------------------------------
     async def start(self) -> None:
-        """启动 ws 连接（幂等，可多次调用）。"""
+        """启动 ws 连接（幂等，可多次调用）。
+
+        **fire-and-forget**: 后台 task 跑重连循环，不阻塞 caller。
+        lifespan 应该 `await start()` 然后立刻 yield，否则 OKX 不可达时 lifespan 会 hang。
+        """
         if self._running:
             return
         self._running = True
         self._retry_count = 0
-        await self._connect_and_subscribe()
+        # 后台 task：connect_loop 接管重连 / 心跳 / 收发
+        self._connect_task = asyncio.create_task(self._connect_loop())
 
     async def stop(self) -> None:
         """优雅关闭。"""
         self._running = False
+        if self._connect_task:
+            self._connect_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._connect_task
+            self._connect_task = None
         if self._ping_task:
             self._ping_task.cancel()
             with suppress(asyncio.CancelledError):
