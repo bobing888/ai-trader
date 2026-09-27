@@ -10,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.analysis import router as analysis_router
 from app.api.health import router as health_router
 from app.api.klines import router as klines_router
+from app.api.notifications import router as notifications_router
+from app.api.notifications import set_notification_service
 from app.api.preferences import router as preferences_router
 from app.api.signals import router as signals_router
 from app.api.strategies import router as strategies_router
@@ -21,6 +23,8 @@ from app.data import binance_client, get_client, okx_client  # noqa: F401
 from app.data.okx_ws import okx_ws_client
 from app.db.session import init_db
 from app.services import github_sync as gh
+from app.services.notification_service import NotificationService
+from app.services.regime_shift_engine import RegimeShiftEngine
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +36,17 @@ async def lifespan(app: FastAPI):
     await okx_client.init()
     await okx_ws_client.start()
     init_db()
+
+    # Regime-shift engine + notification service (fire-and-forget)
+    notification_service = NotificationService()
+    regime_engine = RegimeShiftEngine()
+    notification_service.attach(regime_engine)
+    regime_engine.attach(okx_ws_client, okx_ws_client)
+    asyncio.create_task(regime_engine.start())
+    # 注册到 API router（绕开 import 循环）
+    set_notification_service(notification_service)
+    app.state.notification_service = notification_service
+
     # 启动 GitHub sync 后台循环
     sync_task = None
     if settings.github_sync_enabled:
@@ -42,10 +57,9 @@ async def lifespan(app: FastAPI):
     finally:
         if sync_task is not None:
             sync_task.cancel()
-            try:
+            with __import__("contextlib").suppress(asyncio.CancelledError, Exception):
                 await sync_task
-            except (asyncio.CancelledError, Exception):
-                pass
+        await regime_engine.stop()
         await binance_client.close()
         await okx_client.close()
         await okx_ws_client.stop()
@@ -78,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(strategies_router, prefix="/api/strategies", tags=["strategies"])
     app.include_router(analysis_router, prefix="/api/analysis", tags=["analysis"])
     app.include_router(ws_router, prefix="/api", tags=["ws"])
+    app.include_router(notifications_router, prefix="/api", tags=["notifications"])
 
     return app
 
