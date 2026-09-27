@@ -8,11 +8,14 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { AnalysisPanel } from "@/components/AnalysisPanel";
+import { AICoreVerdictBanner } from "@/components/analysis/AICoreVerdictBanner";
+import { AnalysisSummaryBar } from "@/components/analysis/AnalysisSummaryBar";
 import { TrendAnalysisPanel } from "@/components/TrendAnalysisPanel";
 import { Skeleton, SkeletonStatCard } from "@/components/ui/Skeleton";
-import { fetchKLines } from "@/lib/api";
+import { fetchAnalysis, fetchKLines } from "@/lib/api";
 import { useKlineStore } from "@/stores/klineStore";
 import { useSymbolContext } from "@/stores/symbolContextStore";
+import type { AnalysisResponse } from "@/lib/api";
 
 export function AnalysisPage() {
   const { symbol, timeframe } = useKlineStore();
@@ -24,6 +27,14 @@ export function AnalysisPage() {
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: false,
     staleTime: 3000,
+  });
+
+  const { data: analysisData } = useQuery<AnalysisResponse>({
+    queryKey: ["analysis", symbol, timeframe],
+    queryFn: () => fetchAnalysis(symbol, timeframe, 500),
+    enabled: !!symbol,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 
   // Sync symbol/candles to global symbolContextStore so AnalysisPanel can read it
@@ -72,6 +83,16 @@ export function AnalysisPage() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* AI 核心判读大字区 */}
+      {analysisData && (
+        <AICoreVerdictBanner data={analysisData} />
+      )}
+
+      {/* 顶页摘要条 */}
+      {analysisData && (
+        <AnalysisSummaryBar data={analysisData} />
+      )}
+
       {/* 量化分析面板 */}
       <AnalysisPanel />
 
