@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.config import settings
-
+from app.data.okx_ws import okx_ws_client
 
 router = APIRouter()
 
@@ -17,6 +17,7 @@ class HealthResponse(BaseModel):
     version: str
     debug: bool
     freqtrade_db_configured: bool
+    ws_okx: str
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -28,6 +29,7 @@ async def health() -> HealthResponse:
         version=settings.app_version,
         debug=settings.debug,
         freqtrade_db_configured=settings.freqtrade_db_path.exists(),
+        ws_okx=okx_ws_client.state.value,
     )
 
 
