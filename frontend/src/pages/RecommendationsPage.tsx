@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   ArrowUpDown,
+  BarChart2,
   RefreshCw,
   Shield,
   Target,
@@ -24,6 +25,275 @@ const TIMEFRAMES = ["1h", "4h", "1d"] as const;
 type Timeframe = (typeof TIMEFRAMES)[number];
 
 type SortKey = "confidence" | "regime" | "pair";
+
+// ─── Page-level summary ────────────────────────────────────────────────────────
+
+function PageSummaryBar({ items }: { items: BatchSignalItem[] }) {
+  if (items.length === 0) return null;
+
+  const longCount = items.filter((i) => i.signal?.direction === "long").length;
+  const shortCount = items.filter((i) => i.signal?.direction === "short").length;
+  const neutralCount = items.length - longCount - shortCount;
+
+  const confidences = items
+    .map((i) => i.signal?.confidence ?? 0)
+    .filter((c) => c > 0);
+  const avgConf =
+    confidences.length > 0
+      ? confidences.reduce((a, b) => a + b, 0) / confidences.length
+      : 0;
+
+  let overall = "中性";
+  if (longCount > shortCount * 1.5) overall = "偏多";
+  else if (shortCount > longCount * 1.5) overall = "偏空";
+  else if (longCount > shortCount) overall = "略偏多";
+  else if (shortCount > longCount) overall = "略偏空";
+
+  return (
+    <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-bg-secondary border border-[rgba(255,240,220,0.08)] px-4 py-3">
+      {/* Direction counts */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
+          <TrendingUp className="w-4 h-4 text-bull" />
+          <span className="text-sm font-semibold text-bull">{longCount}</span>
+          <span className="text-xs text-text-secondary">做多</span>
+        </div>
+        <div className="w-px h-4 bg-[rgba(255,240,220,0.08)]" />
+        <div className="flex items-center gap-1.5">
+          <TrendingDown className="w-4 h-4 text-bear" />
+          <span className="text-sm font-semibold text-bear">{shortCount}</span>
+          <span className="text-xs text-text-secondary">做空</span>
+        </div>
+        {neutralCount > 0 && (
+          <>
+            <div className="w-px h-4 bg-[rgba(255,240,220,0.08)]" />
+            <div className="flex items-center gap-1.5">
+              <ArrowUpDown className="w-4 h-4 text-warning" />
+              <span className="text-sm font-semibold text-warning">{neutralCount}</span>
+              <span className="text-xs text-text-secondary">观望</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="w-px h-4 bg-[rgba(255,240,220,0.08)]" />
+
+      {/* Avg confidence */}
+      <div className="flex items-center gap-1.5">
+        <BarChart2 className="w-3.5 h-3.5 text-text-tertiary" />
+        <span className="text-xs text-text-secondary">平均置信度</span>
+        <span
+          className={cn(
+            "text-sm font-bold tabular-nums",
+            avgConf >= 0.6
+              ? "text-bull"
+              : avgConf <= 0.4
+                ? "text-bear"
+                : "text-warning",
+          )}
+        >
+          {(avgConf * 100).toFixed(0)}%
+        </span>
+      </div>
+
+      <div className="w-px h-4 bg-[rgba(255,240,220,0.08)]" />
+
+      {/* Overall AI judgment */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-text-secondary">AI 整体判断：</span>
+        <Badge
+          tone={
+            overall === "偏多" || overall === "略偏多"
+              ? "bull"
+              : overall === "偏空" || overall === "略偏空"
+                ? "bear"
+                : "warning"
+          }
+          className="text-xs font-semibold"
+        >
+          {overall}
+        </Badge>
+      </div>
+    </div>
+  );
+}
+
+// ─── Direction Badge ───────────────────────────────────────────────────────────
+
+function DirectionBadge({ direction }: { direction: "long" | "short" }) {
+  const isLong = direction === "long";
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xl font-bold tracking-tight min-w-[80px] justify-center",
+        isLong
+          ? "bg-bull/15 text-bull border-2 border-bull/30"
+          : "bg-bear/15 text-bear border-2 border-bear/30",
+      )}
+    >
+      {isLong ? (
+        <TrendingUp className="w-6 h-6" />
+      ) : (
+        <TrendingDown className="w-6 h-6" />
+      )}
+      {isLong ? "做多" : "做空"}
+    </div>
+  );
+}
+
+// ─── Confidence Ring ──────────────────────────────────────────────────────────
+
+function ConfidenceRing({ confidence, direction }: { confidence: number; direction: "long" | "short" }) {
+  const pct = Math.round(confidence * 100);
+  const isLong = direction === "long";
+  const color = isLong ? "#22c55e" : "#ef4444";
+  const r = 22;
+  const circumference = 2 * Math.PI * r;
+  const strokeDashoffset = circumference * (1 - confidence);
+
+  let levelLabel: string;
+  let levelColor: string;
+  if (pct >= 70) {
+    levelLabel = "强";
+    levelColor = isLong ? "text-bull" : "text-bear";
+  } else if (pct >= 50) {
+    levelLabel = "中";
+    levelColor = "text-warning";
+  } else {
+    levelLabel = "弱";
+    levelColor = "text-text-secondary";
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className="relative w-14 h-14">
+        {/* Background circle */}
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 56 56">
+          <circle
+            cx="28"
+            cy="28"
+            r={r}
+            fill="none"
+            stroke="rgba(255,240,220,0.08)"
+            strokeWidth="5"
+          />
+          <circle
+            cx="28"
+            cy="28"
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth="5"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            style={{ transition: "stroke-dashoffset 0.6s ease" }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className={cn("text-sm font-bold tabular-nums", levelColor)}>{pct}%</span>
+        </div>
+      </div>
+      <span className={cn("text-[10px] font-medium", levelColor)}>{levelLabel}信号</span>
+    </div>
+  );
+}
+
+// ─── Regime Tag ───────────────────────────────────────────────────────────────
+
+const REGIME_CONFIG: Record<
+  string,
+  { label: string; tone: "bull" | "bear" | "warning" | "info" }
+> = {
+  bull: { label: "多头", tone: "bull" },
+  bear: { label: "空头", tone: "bear" },
+  choppy: { label: "震荡", tone: "warning" },
+  crisis: { label: "危机", tone: "bear" },
+};
+
+function RegimeTag({ regime }: { regime: string | undefined }) {
+  const cfg = REGIME_CONFIG[regime ?? ""] ?? REGIME_CONFIG.choppy;
+  return <Badge tone={cfg.tone}>{cfg.label}</Badge>;
+}
+
+// ─── Timeframe Tag ────────────────────────────────────────────────────────────
+
+function TimeframeTag({ timeframe }: { timeframe: string | undefined }) {
+  return (
+    <Badge tone="info" className="text-[11px]">
+      {timeframe ?? "—"}
+    </Badge>
+  );
+}
+
+// ─── Signal Reasons ───────────────────────────────────────────────────────────
+
+function SignalReasons({ reasons }: { reasons: string[] }) {
+  const display = reasons.slice(0, 5);
+  return (
+    <div className="space-y-1">
+      {display.map((r, i) => (
+        <div key={i} className="flex items-start gap-1.5">
+          <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+          <span className="text-xs text-text-secondary leading-relaxed">{r}</span>
+        </div>
+      ))}
+      {reasons.length > 5 && (
+        <span className="text-[10px] text-text-tertiary pl-3.5">+{reasons.length - 5} 条</span>
+      )}
+    </div>
+  );
+}
+
+// ─── Risk Bar ─────────────────────────────────────────────────────────────────
+
+function RiskBar({ item }: { item: BatchSignalItem }) {
+  const signal = item.signal!;
+  return (
+    <div className="rounded-xl bg-bg-tertiary/50 border border-[rgba(255,240,220,0.06)] px-3 py-2 space-y-1">
+      <div className="text-[10px] font-medium uppercase tracking-wider text-text-tertiary mb-1.5">
+        风险指标
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+        {signal.entry_zones[0] && (
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] text-text-tertiary">入场</span>
+            <span className="text-xs font-medium text-text-primary tabular-nums">
+              {signal.entry_zones[0].replace(/\s+/g, " ").trim() || "—"}
+            </span>
+          </div>
+        )}
+        {signal.risk_warnings[0] && (
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] text-text-tertiary">风险</span>
+            <span className="text-[10px] text-warning">{signal.risk_warnings[0]}</span>
+          </div>
+        )}
+        <div className="flex justify-between items-center">
+          <span className="text-[10px] text-text-tertiary">置信度</span>
+          <span
+            className={cn(
+              "text-xs font-semibold tabular-nums",
+              signal.confidence >= 0.6
+                ? "text-bull"
+                : signal.confidence <= 0.4
+                  ? "text-bear"
+                  : "text-warning",
+            )}
+          >
+            {(signal.confidence * 100).toFixed(0)}%
+          </span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-[10px] text-text-tertiary">市态</span>
+          <RegimeTag regime={signal.regime} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function RecommendationsPage() {
   const { t } = useTranslation();
@@ -102,6 +372,11 @@ export function RecommendationsPage() {
       {/* Global regime banner */}
       {globalRegime && (
         <RegimeBanner regime={globalRegime} />
+      )}
+
+      {/* Page Summary Bar */}
+      {!isLoading && sortedSignals.length > 0 && (
+        <PageSummaryBar items={sortedSignals} />
       )}
 
       {/* Controls */}
@@ -191,7 +466,7 @@ export function RecommendationsPage() {
       {!isLoading && !error && sortedSignals.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {sortedSignals.map((item: BatchSignalItem) => (
-            <SignalCard key={item.pair} item={item} />
+            <EnhancedSignalCard key={item.pair} item={item} timeframe={timeframe} />
           ))}
         </div>
       )}
@@ -199,7 +474,7 @@ export function RecommendationsPage() {
   );
 }
 
-// ─── Regime Banner ───────────────────────────────────────────────────────────────
+// ─── Regime Banner ─────────────────────────────────────────────────────────────
 
 function RegimeBanner({ regime }: { regime: BatchSignalsResponse["regime_global"] }) {
   if (!regime) return null;
@@ -233,97 +508,73 @@ function RegimeBanner({ regime }: { regime: BatchSignalsResponse["regime_global"
   );
 }
 
-// ─── Signal Card ────────────────────────────────────────────────────────────────
+// ─── Enhanced Signal Card ──────────────────────────────────────────────────────
 
-function SignalCard({ item }: { item: BatchSignalItem }) {
+function EnhancedSignalCard({ item, timeframe }: { item: BatchSignalItem; timeframe: string }) {
   const signal = item.signal!;
   const isLong = signal.direction === "long";
-  const confidence = signal.confidence;
-  const strength: "strong" | "moderate" | "weak" =
-    confidence >= 0.75 ? "strong" : confidence >= 0.55 ? "moderate" : "weak";
-  const confColor = isLong ? "text-bull" : "text-bear";
-  const confBg = isLong ? "bg-bull/10 border-bull/25" : "bg-bear/10 border-bear/25";
-  const strengthLabel = { strong: "强", moderate: "中", weak: "弱" }[strength];
 
   return (
-    <Card className={cn("transition-all hover:border-[rgba(255,240,220,0.15)]", confBg)}>
+    <Card className={cn(
+      "transition-all hover:border-[rgba(255,240,220,0.15)]",
+      isLong ? "border-l-2 border-l-bull/40" : "border-l-2 border-l-bear/40",
+    )}>
       <CardBody className="space-y-3">
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2">
-            <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", isLong ? "bg-bull/15" : "bg-bear/15")}>
-              {isLong
-                ? <TrendingUp className="w-4 h-4 text-bull" />
-                : <TrendingDown className="w-4 h-4 text-bear" />}
+        {/* ── Section A: Direction + Confidence (visual intensity zone) ── */}
+        <div className="flex items-center justify-between gap-3">
+          {/* Large direction badge */}
+          <DirectionBadge direction={signal.direction} />
+
+          {/* Pair + tags */}
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="text-sm font-bold text-text-primary">{item.pair}</div>
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+              <RegimeTag regime={signal.regime} />
+              <TimeframeTag timeframe={timeframe} />
             </div>
-            <div>
-              <div className="text-sm font-semibold text-text-primary">{item.pair}</div>
-              <Badge tone={isLong ? "bull" : "bear"} className="text-[10px] mt-0.5">
-                {isLong ? "做多" : "做空"}
+          </div>
+        </div>
+
+        {/* Confidence ring */}
+        <div className="flex justify-center">
+          <ConfidenceRing confidence={signal.confidence} direction={signal.direction} />
+        </div>
+
+        {/* ── Section B: Signal reasons summary ── */}
+        {signal.reasons.length > 0 && (
+          <div>
+            <div className="text-[10px] font-medium uppercase tracking-wider text-text-tertiary mb-1.5">
+              信号摘要
+            </div>
+            <SignalReasons reasons={signal.reasons} />
+          </div>
+        )}
+
+        {/* Contributing strategies */}
+        {signal.contributing_strategies.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {signal.contributing_strategies.map((s) => (
+              <Badge key={s} tone="default" className="text-[10px]">
+                {s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
               </Badge>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <div className={cn("text-xl font-bold tabular-nums tracking-tight", confColor)}>
-              {(confidence * 100).toFixed(0)}%
-            </div>
-            <Badge
-              tone={strength === "strong" ? "bull" : strength === "moderate" ? "warning" : "default"}
-              className="text-[10px]"
-            >
-              {strengthLabel}信号
-            </Badge>
-          </div>
-        </div>
-
-        {/* Reasons */}
-        <div className="space-y-1">
-          {signal.reasons.slice(0, 3).map((r, i) => (
-            <div key={i} className="flex items-start gap-1.5">
-              <span className="mt-0.5 w-1 h-1 rounded-full bg-accent shrink-0" />
-              <span className="text-xs text-text-secondary">{r}</span>
-            </div>
-          ))}
-          {signal.reasons.length > 3 && (
-            <span className="text-[10px] text-text-tertiary">+{signal.reasons.length - 3} 条</span>
-          )}
-        </div>
-
-        {/* Strategies */}
-        <div className="flex flex-wrap gap-1">
-          {signal.contributing_strategies.map((s) => (
-            <Badge key={s} tone="default" className="text-[10px]">
-              {s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-            </Badge>
-          ))}
-        </div>
-
-        {/* Entry zones */}
-        {signal.entry_zones.length > 0 && (
-          <div className="rounded-xl bg-bg-tertiary/60 border border-[rgba(255,240,220,0.06)] px-3 py-2 space-y-0.5">
-            <div className="text-[10px] font-medium uppercase tracking-wider text-text-tertiary">入场参考</div>
-            {signal.entry_zones.map((z, i) => (
-              <div key={i} className="text-xs text-text-secondary">{z}</div>
             ))}
           </div>
         )}
 
-        {/* Risk warnings */}
-        {signal.risk_warnings.length > 0 && (
-          <div className="flex items-center gap-1.5 text-[11px] text-warning">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-            {signal.risk_warnings[0]}
-          </div>
-        )}
+        {/* ── Section C: Risk bar ── */}
+        <RiskBar item={item} />
 
-        {/* Footer */}
+        {/* ── Footer ── */}
         <div className="flex items-center justify-between pt-1 border-t border-[rgba(255,240,220,0.06)]">
           <div className="flex items-center gap-1 text-[10px] text-text-tertiary">
             <Shield className="w-3 h-3" />
-            策略置信度 {signal.regime_confidence > 0 ? `${(signal.regime_confidence * 100).toFixed(0)}%` : "—"}
+            市态置信 {signal.regime_confidence > 0 ? `${(signal.regime_confidence * 100).toFixed(0)}%` : "—"}
           </div>
           <div className="text-[10px] text-text-tertiary tabular-nums">
-            {new Date(signal.generated_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+            {new Date(signal.generated_at).toLocaleTimeString("zh-CN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </div>
         </div>
       </CardBody>
