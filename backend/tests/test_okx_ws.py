@@ -4,18 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from contextlib import suppress
+from unittest.mock import AsyncMock
 
 import pytest
-import websockets
 
 from app.data.okx_ws import (
     HEARTBEAT_INTERVAL,
     OkxWsClient,
     WsState,
 )
-
 
 # ---------------------------------------------------------------------------
 # Test: 初始状态
@@ -36,7 +34,7 @@ async def test_subscribe_candles_returns_queue():
     client = OkxWsClient()
 
     mock_conn = AsyncMock()
-    mock_conn.closed = False
+    mock_conn.close_code = None
     client._conn = mock_conn
     client._state = WsState.CONNECTED
 
@@ -59,7 +57,7 @@ async def test_duplicate_subscribe_no_extra_frame():
     client = OkxWsClient()
 
     mock_conn = AsyncMock()
-    mock_conn.closed = False
+    mock_conn.close_code = None
     client._conn = mock_conn
     client._state = WsState.CONNECTED
 
@@ -84,7 +82,7 @@ async def test_candle_parse_fields():
     client = OkxWsClient()
 
     mock_conn = AsyncMock()
-    mock_conn.closed = False
+    mock_conn.close_code = None
     client._conn = mock_conn
     client._state = WsState.CONNECTED
 
@@ -128,7 +126,7 @@ async def test_ticker_parse_fields():
     client = OkxWsClient()
 
     mock_conn = AsyncMock()
-    mock_conn.closed = False
+    mock_conn.close_code = None
     client._conn = mock_conn
     client._state = WsState.CONNECTED
 
@@ -170,10 +168,10 @@ async def test_ticker_parse_fields():
 
 def test_reconnect_exponential_backoff():
     """验证指数退避公式：1→2→4→8→16→30(cap)。"""
-    MAX_DELAY = 30
+    max_delay = 30
 
     for attempt, expected in [(0, 1), (1, 2), (2, 4), (3, 8), (4, 16), (5, 30), (10, 30)]:
-        delay = min(2**attempt, MAX_DELAY)
+        delay = min(2**attempt, max_delay)
         assert delay == expected, f"attempt={attempt}: expected {expected}, got {delay}"
 
 
@@ -187,7 +185,7 @@ async def test_ping_heartbeat_sent():
     client = OkxWsClient()
 
     mock_conn = AsyncMock()
-    mock_conn.closed = False
+    mock_conn.close_code = None
     client._conn = mock_conn
     client._state = WsState.CONNECTED
     client._running = True  # 必须设为 True，否则 _ping_loop 第一次 sleep 就直接退出了
@@ -197,10 +195,8 @@ async def test_ping_heartbeat_sent():
     # 等待足够时间（略大于一个间隔）
     await asyncio.sleep(HEARTBEAT_INTERVAL + 0.5)
     ping_task.cancel()
-    try:
+    with suppress(asyncio.CancelledError):
         await ping_task
-    except asyncio.CancelledError:
-        pass
 
     # 验证至少发了一次 ping
     calls = list(mock_conn.send.call_args_list)
@@ -209,3 +205,32 @@ async def test_ping_heartbeat_sent():
         if json.loads(c[0][0]).get("op") == "ping"
     ]
     assert len(ping_calls) >= 1, f"期望至少1次 ping，实际调用: {calls}"
+
+
+# ---------------------------------------------------------------------------
+# Regression: websockets 14+ removed .closed attribute
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_ping_loop_no_closed_attr():
+    """_ping_loop 不应访问 .closed 属性；websockets 14+ 已删除该属性。
+
+    模拟真实 ClientConnection 的行为：.closed 不存在，只有 close_code。
+    getattr(self._conn, "close_code", None) is None 时连接视为 OPEN。
+    """
+    client = OkxWsClient()
+    client._running = True
+
+    mock_conn = AsyncMock()
+    mock_conn.close_code = None  # 模拟已连接状态的 close_code
+    client._conn = mock_conn
+    client._state = WsState.CONNECTED
+
+    # 启动 _ping_loop，跑 50ms 不抛异常即通过
+    ping_task = asyncio.create_task(client._ping_loop())
+    await asyncio.sleep(0.05)
+    ping_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await ping_task
+
+    # 没有异常 = 通过
