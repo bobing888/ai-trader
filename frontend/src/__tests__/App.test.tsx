@@ -29,10 +29,15 @@ describe("App", () => {
   it("renders all primary nav items", () => {
     renderWithProviders(<App />);
     // App renders both desktop sidebar and mobile drawer; assert at least one of each.
-    expect(screen.getAllByTestId("nav-kline").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("nav-rec").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("nav-trades").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("nav-backtest").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("nav-settings").length).toBeGreaterThan(0);
+    // Use querySelector for substring match since sidebar uses space-separated testId values.
+    const findByTestIdSubstr = (id: string) =>
+      Array.from(document.querySelectorAll(`[data-testid]`)).filter(
+        (el) => el.getAttribute("data-testid")?.includes(id) ?? false,
+      );
+    expect(findByTestIdSubstr("nav-kline").length).toBeGreaterThan(0);
+    expect(findByTestIdSubstr("nav-rec").length).toBeGreaterThan(0);
+    expect(findByTestIdSubstr("nav-trades").length).toBeGreaterThan(0);
+    expect(findByTestIdSubstr("nav-backtest").length).toBeGreaterThan(0);
+    expect(findByTestIdSubstr("nav-settings").length).toBeGreaterThan(0);
   });
 });
