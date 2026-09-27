@@ -1,21 +1,20 @@
 /**
- * AnalysisPage — 量化分析 + 市场趋势分析整合页。
- * 替代原 K 线页面：保留 AnalysisPanel + TrendAnalysisPanel，
- * 不含 K 线图（已移除），专注信号与指标解读。
+ * AnalysisPage — 简化版市场趋势分析。
+ *
+ * 重构动机：去掉雷达图/指标共振条等细节，改为「结论+理由+操作」三段式直读布局，
+ * 并在头部补上当前价作为判断锚点。
  */
 
-import { useEffect } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { AnalysisPanel } from "@/components/AnalysisPanel";
-import { AICoreVerdictBanner } from "@/components/analysis/AICoreVerdictBanner";
-import { AnalysisSummaryBar } from "@/components/analysis/AnalysisSummaryBar";
 import { TrendAnalysisPanel } from "@/components/TrendAnalysisPanel";
+import { AnalysisHeader } from "@/components/analysis/AnalysisHeader";
+import { AnalysisRegimeCard } from "@/components/analysis/AnalysisRegimeCard";
 import { Skeleton, SkeletonStatCard } from "@/components/ui/Skeleton";
-import { fetchAnalysis, fetchKLines } from "@/lib/api";
+import { fetchAnalysis, fetchKLines, fetchSymbolMeta } from "@/lib/api";
 import { useKlineStore } from "@/stores/klineStore";
 import { useSymbolContext } from "@/stores/symbolContextStore";
-import type { AnalysisResponse } from "@/lib/api";
 
 export function AnalysisPage() {
   const { symbol, timeframe } = useKlineStore();
@@ -29,7 +28,15 @@ export function AnalysisPage() {
     staleTime: 3000,
   });
 
-  const { data: analysisData } = useQuery<AnalysisResponse>({
+  const { data: ticker } = useQuery({
+    queryKey: ["ticker", symbol],
+    queryFn: () => fetchSymbolMeta(symbol),
+    enabled: !!symbol,
+    refetchInterval: 5000,
+    staleTime: 4000,
+  });
+
+  const { data: analysisData } = useQuery({
     queryKey: ["analysis", symbol, timeframe],
     queryFn: () => fetchAnalysis(symbol, timeframe, 500),
     enabled: !!symbol,
@@ -37,16 +44,11 @@ export function AnalysisPage() {
     staleTime: 30_000,
   });
 
-  // Sync symbol/candles to global symbolContextStore so AnalysisPanel can read it
-  const { setContext } = useSymbolContext.getState();
-  useEffect(() => {
-    if (!data || data.candles.length === 0) return;
-    setContext({
-      symbol: data.symbol,
-      timeframe: data.timeframe,
-      candles: data.candles,
-    });
-  }, [data, setContext]);
+  const setContext = useSymbolContext((s) => s.setContext);
+  const lastCandle = useMemo(() => {
+    if (!data || data.candles.length === 0) return undefined;
+    return data.candles[data.candles.length - 1];
+  }, [data]);
 
   if (isLoading) {
     return (
@@ -81,29 +83,34 @@ export function AnalysisPage() {
     );
   }
 
+  if (data && lastCandle) {
+    setContext({
+      symbol: data.symbol,
+      timeframe: data.timeframe,
+      candles: data.candles,
+    });
+  }
+
   return (
-    <div className="flex flex-col gap-5">
-      {/* AI 核心判读大字区 */}
-      {analysisData && (
-        <AICoreVerdictBanner data={analysisData} />
-      )}
+    <div className="flex flex-col gap-4 sm:gap-5">
+      <AnalysisHeader
+        symbol={symbol}
+        timeframe={timeframe}
+        ticker={ticker}
+        klinePrice={lastCandle?.close}
+        asOf={analysisData?.as_of}
+      />
 
-      {/* 顶页摘要条 */}
-      {analysisData && (
-        <AnalysisSummaryBar data={analysisData} />
-      )}
+      {analysisData && <AnalysisRegimeCard data={analysisData} />}
 
-      {/* 量化分析面板 */}
-      <AnalysisPanel />
-
-      {/* 市场趋势分析面板 */}
       <TrendAnalysisPanel
         candles={data.candles}
         symbol={data.symbol}
         timeframe={data.timeframe}
+        currentPrice={ticker?.price && ticker.price > 0 ? ticker.price : lastCandle?.close}
+        change24hPct={ticker?.change_24h}
       />
 
-      {/* 数据状态提示 */}
       {isFetching && (
         <p className="text-[11px] text-text-tertiary text-center tabular-nums">
           {data.candles.length} 根 K 线 · {data.symbol} · {data.timeframe}
