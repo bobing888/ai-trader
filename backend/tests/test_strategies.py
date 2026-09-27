@@ -2,12 +2,14 @@
 
 import json
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
 from app.db.session import SessionLocal, init_db
 from app.db.models import Strategy
 from app.main import app
+from app.signals.strategy_pool import StrategyId, STRATEGY_INSTANCES, ConfluenceStrategy
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -103,3 +105,69 @@ def test_sync_github_status(client):
 def test_get_404(client):
     r = client.get("/api/strategies/99999")
     assert r.status_code == 404
+
+
+# ── ConfluenceStrategy tests ────────────────────────────────────────────────────
+
+
+def test_confluence_strategy_in_pool():
+    """验证 StrategyId.CONFLUENCE 已加入 STRATEGY_INSTANCES。"""
+    assert StrategyId.CONFLUENCE in STRATEGY_INSTANCES
+    instance = STRATEGY_INSTANCES[StrategyId.CONFLUENCE]
+    assert isinstance(instance, ConfluenceStrategy)
+
+
+def test_confluence_strategy_confidence_bounds():
+    """不同 confluence_score 输入下 confidence 边界正确。"""
+    # 构建一个 mock candles dict，构造已知 confluent score 场景
+    # 通过直接 patch multi_indicator_confluence 来控制 score
+    from app.analytics.trend import multi_indicator_confluence
+    import app.analytics.trend as trend_module
+    import unittest.mock
+
+    rng = np.random.default_rng(42)
+    close = np.cumsum(rng.normal(0, 1, 200)) + 100
+    high = close + rng.uniform(0.1, 1.0, 200)
+    low = close - rng.uniform(0.1, 1.0, 200)
+    volume = rng.uniform(100, 500, 200)
+    candles = {"symbol": "BTCUSDT", "timeframe": "1h", "close": close, "high": high, "low": low}
+    volumes = volume.astype(np.float64)
+
+    # score >= 75 → confidence 0.85
+    with unittest.mock.patch.object(trend_module, "multi_indicator_confluence", return_value={"confluence_score": 80, "macd": {"status": "above_zero"}, "price_vs_ma30": "above", "adx14": {"adx": 30, "pdi": 30, "ndi": 10}}):
+        strat = ConfluenceStrategy()
+        result = strat.evaluate(candles, volumes, "bull")
+        assert result.direction in ("long", "short")
+        assert result.confidence == 0.85
+
+    # 60 <= score < 75 → confidence 0.70
+    with unittest.mock.patch.object(trend_module, "multi_indicator_confluence", return_value={"confluence_score": 65, "macd": {"status": "above_zero"}, "price_vs_ma30": "above", "adx14": {"adx": 20, "pdi": 15, "ndi": 15}}):
+        strat = ConfluenceStrategy()
+        result = strat.evaluate(candles, volumes, "bull")
+        assert result.confidence == 0.70
+
+    # 45 <= score < 60 → confidence 0.55
+    with unittest.mock.patch.object(trend_module, "multi_indicator_confluence", return_value={"confluence_score": 50, "macd": {"status": "above_zero"}, "price_vs_ma30": "above", "adx14": {"adx": 15, "pdi": 10, "ndi": 10}}):
+        strat = ConfluenceStrategy()
+        result = strat.evaluate(candles, volumes, "bull")
+        assert result.confidence == 0.55
+
+
+def test_confluence_no_signal_when_score_low():
+    """score < 45 时 direction is None。"""
+    from app.analytics import trend as trend_module
+    import unittest.mock
+
+    rng = np.random.default_rng(42)
+    close = np.cumsum(rng.normal(0, 1, 200)) + 100
+    high = close + rng.uniform(0.1, 1.0, 200)
+    low = close - rng.uniform(0.1, 1.0, 200)
+    volume = rng.uniform(100, 500, 200)
+    candles = {"symbol": "BTCUSDT", "timeframe": "1h", "close": close, "high": high, "low": low}
+    volumes = volume.astype(np.float64)
+
+    with unittest.mock.patch.object(trend_module, "multi_indicator_confluence", return_value={"confluence_score": 30, "macd": {"status": "below_zero"}, "price_vs_ma30": "below", "adx14": {"adx": 10, "pdi": 5, "ndi": 5}}):
+        strat = ConfluenceStrategy()
+        result = strat.evaluate(candles, volumes, "choppy")
+        assert result.direction is None
+        assert result.confidence == 0.0

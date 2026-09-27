@@ -10,7 +10,7 @@ from app.analytics.statistical import (
     rsi_score,
     shannon_entropy,
 )
-from app.analytics.trend import adx, trend_strength
+from app.analytics.trend import adx, trend_strength, macd, sma, multi_indicator_confluence
 from app.analytics.volatility import atr, volatility_percentile
 from app.main import app
 
@@ -126,3 +126,56 @@ def test_analysis_invalid_symbol_returns_404(client):
     if r.status_code == 502:
         pytest.skip("Binance unreachable in test env")
     assert r.status_code == 404
+
+
+# ── MACD / SMA / Confluence tests ─────────────────────────────────────────────
+
+
+def test_macd_basic_shape():
+    """验证 MACD 产出三个 ndarray 长度一致，最后 slow 个点可能为 nan。"""
+    np.random.seed(0)
+    close = np.cumsum(np.random.randn(200)) + 100
+    macd_line, signal_line, histogram = macd(close)
+    assert len(macd_line) == len(signal_line) == len(histogram) == 200
+    assert not np.isnan(macd_line[-1])
+
+
+def test_sma30_value():
+    """前 29 个 nan，第 30 个值正确（简单均值）。"""
+    close = np.arange(1.0, 101.0)  # 1..100
+    result = sma(close, period=30)
+    assert np.all(np.isnan(result[:29]))
+    assert not np.isnan(result[29])
+    assert abs(result[29] - 15.5) < 1e-9  # mean(1..30) = 15.5
+
+
+def test_confluence_score_range():
+    """在 mock data 上，score ∈ [0, 100]。"""
+    rng = np.random.default_rng(42)
+    close = np.cumsum(rng.normal(0, 1, 200)) + 100
+    high = close + rng.uniform(0.1, 1.0, 200)
+    low = close - rng.uniform(0.1, 1.0, 200)
+    volume = rng.uniform(100, 500, 200)
+    result = multi_indicator_confluence(high, low, close, volume)
+    assert isinstance(result["confluence_score"], int)
+    assert 0 <= result["confluence_score"] <= 100
+
+
+def test_confluence_returns_dict_with_required_keys():
+    """验证 confluence 返回结构包含所有必需字段。"""
+    rng = np.random.default_rng(99)
+    close = np.cumsum(rng.normal(0, 1, 200)) + 100
+    high = close + rng.uniform(0.1, 1.0, 200)
+    low = close - rng.uniform(0.1, 1.0, 200)
+    volume = rng.uniform(100, 500, 200)
+    result = multi_indicator_confluence(high, low, close, volume)
+    required_keys = {"ma30", "price_vs_ma30", "macd", "bollinger", "rsi14", "adx14", "volume_ratio", "confluence_score"}
+    assert required_keys.issubset(result.keys())
+    # macd 子字段
+    assert {"macd_value", "signal_value", "histogram", "status"}.issubset(result["macd"].keys())
+    # bollinger 子字段
+    assert {"upper", "mid", "lower", "position"}.issubset(result["bollinger"].keys())
+    # rsi14 子字段
+    assert {"value", "zone"}.issubset(result["rsi14"].keys())
+    # adx14 子字段
+    assert {"adx", "pdi", "ndi"}.issubset(result["adx14"].keys())
