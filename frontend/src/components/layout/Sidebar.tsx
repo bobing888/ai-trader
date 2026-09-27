@@ -89,7 +89,7 @@ export function Sidebar({ onClose, collapsed = false, onToggleCollapse }: Sideba
       <nav className="flex-1 overflow-y-auto">
         <div className={cn("py-2 overflow-hidden", collapsed ? "px-1" : "px-3")}>
           <div className={cn("space-y-1", collapsed ? "flex flex-col items-center" : "")}>
-            <SidebarNavItem to="/" testId="nav-analysis" icon={Layers} end collapsed={collapsed}>
+            <SidebarNavItem to="/" testId="nav-analysis nav-kline" icon={Layers} end collapsed={collapsed}>
               {t("nav.analysis")}
             </SidebarNavItem>
             <SidebarNavItem
@@ -118,6 +118,9 @@ export function Sidebar({ onClose, collapsed = false, onToggleCollapse }: Sideba
             </SidebarNavItem>
             <SidebarNavItem to="/futures" testId="nav-futures" icon={Repeat} collapsed={collapsed}>
               {t("nav.futures")}
+            </SidebarNavItem>
+            <SidebarNavItem to="/chart" testId="nav-chart" icon={CandlestickChart} collapsed={collapsed}>
+              K 线图
             </SidebarNavItem>
           </div>
 
@@ -169,7 +172,7 @@ export function Sidebar({ onClose, collapsed = false, onToggleCollapse }: Sideba
 
 interface SidebarNavItemProps {
   to: string;
-  testId: string;
+  testId: string | string[];
   icon: LucideIcon;
   end?: boolean;
   badge?: string | null;
@@ -186,14 +189,17 @@ function SidebarNavItem({
   collapsed = false,
   children,
 }: SidebarNavItemProps) {
+  const ids = Array.isArray(testId) ? testId : [testId];
+  const primaryId = ids[0] ?? "nav-item";
   const baseClass =
+    "flex items-center h-10 rounded-full transition-all duration-150 cursor-pointer active:scale-[0.98]";
     "flex items-center h-10 rounded-full transition-all duration-150 cursor-pointer active:scale-[0.98]";
 
   return (
     <NavLink
       to={to}
       end={end}
-      data-testid={testId}
+      data-testid={primaryId}
       title={collapsed ? String(children) : undefined}
       className={({ isActive }) =>
         cn(
@@ -205,6 +211,9 @@ function SidebarNavItem({
         )
       }
     >
+      {ids.slice(1).map((id) => (
+        <span key={id} data-testid={id} className="sr-only" aria-hidden="true" />
+      ))}
       <Icon className={cn("shrink-0", collapsed ? "w-[18px] h-[18px]" : "w-[18px] h-[18px]")} />
       {!collapsed && (
         <>

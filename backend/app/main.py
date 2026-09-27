@@ -15,6 +15,7 @@ from app.api.signals import router as signals_router
 from app.api.strategies import router as strategies_router
 from app.api.ticker import router as ticker_router
 from app.api.trades import router as trades_router
+from app.api.ws import router as ws_router
 from app.config import settings
 from app.data import binance_client, get_client, okx_client  # noqa: F401
 from app.data.okx_ws import okx_ws_client
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(preferences_router, prefix="/api/preferences", tags=["preferences"])
     app.include_router(strategies_router, prefix="/api/strategies", tags=["strategies"])
     app.include_router(analysis_router, prefix="/api/analysis", tags=["analysis"])
+    app.include_router(ws_router, prefix="/api", tags=["ws"])
 
     return app
 
