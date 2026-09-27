@@ -311,12 +311,34 @@ export interface RegimeInfo {
   description: string;
 }
 
+export interface ConfluenceInfo {
+  ma30: number;
+  price_vs_ma30: "above" | "below" | "cross_above" | "cross_below";
+  macd: {
+    macd_value: number;
+    signal_value: number;
+    histogram: number;
+    status: "bullish_cross" | "bearish_cross" | "above_zero" | "below_zero";
+  };
+  bollinger: {
+    upper: number;
+    mid: number;
+    lower: number;
+    position: "above_upper" | "below_lower" | "inside_upper" | "inside_lower";
+  };
+  rsi14: { value: number; zone: "overbought" | "oversold" | "neutral" };
+  adx14: { adx: number; pdi: number; ndi: number };
+  volume_ratio: number;
+  confluence_score: number; // 0-100
+}
+
 export interface TrendInfo {
   adx: number;
   pdi: number;
   ndi: number;
   strength_label: string;
   direction?: "long" | "short";
+  confluence?: ConfluenceInfo;
 }
 
 export interface VolatilityInfo {

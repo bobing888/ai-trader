@@ -6,6 +6,7 @@
 import { AlertTriangle, Minus, TrendingDown, TrendingUp } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
+import { ConfluenceScoreGauge } from "@/components/analysis/ConfluenceScoreGauge";
 import { cn } from "@/lib/utils";
 import type { AnalysisResponse } from "@/lib/api";
 
@@ -150,6 +151,9 @@ export function AICoreVerdictBanner({ data }: Props) {
 
       {/* Right: Confidence ring + advice */}
       <div className="flex items-center gap-5 sm:gap-6 shrink-0">
+        {data.trend.confluence && (
+          <ConfluenceScoreGauge confluence={data.trend.confluence} />
+        )}
         <ConfidenceRing confidence={confidence} />
 
         <div className="h-12 w-px bg-[rgba(255,240,220,0.1)] hidden sm:block" />
