@@ -19,6 +19,14 @@ backtest_confluence.py — 回测验证 multi_indicator_confluence 评分的方�
 多币种多周期:
     PYTHONPATH=. python3 scripts/backtest_confluence.py --symbols BTC-USDT,ETH-USDT,SOL-USDT \
         --timeframes 1h,4h,1d --multi
+
+真实数据:
+    PYTHONPATH=. python3 scripts/backtest_confluence.py --symbol BTC-USDT --timeframe 1h --source okx
+    PYTHONPATH=. python3 scripts/backtest_confluence.py --symbol BTCUSDT --timeframe 1h --source binance
+
+多币种扫描:
+    PYTHONPATH=. python3 scripts/backtest_confluence.py --scan-all
+    PYTHONPATH=. python3 scripts/backtest_confluence.py --scan-all --report /tmp/scan-2026-09-27.md
 """
 
 import argparse
@@ -26,7 +34,8 @@ import math
 import sys
 import os
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Literal, TypedDict
+import warnings
 
 # 确保 backend/ 在 path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -44,6 +53,12 @@ from app.api.klines import Candle
 _TIMEFRAME_SECONDS: dict[str, int] = {
     "1m": 60, "5m": 300, "15m": 900,
     "1h": 3600, "4h": 14400, "1d": 86400,
+}
+
+# Binance timeframe (1h, 4h) → OKX timeframe (1H, 4H) — must be upper-case for OKX
+_OKX_INTERVAL_MAP: dict[str, str] = {
+    "1m": "1m", "5m": "5m", "15m": "15m",
+    "1h": "1H", "4h": "4H", "1d": "1D",
 }
 
 
@@ -162,35 +177,106 @@ def derive_signal(result: dict) -> Literal["long", "short", "mixed", "none"]:
 
 # ── 数据获取 ──────────────────────────────────────────────────────────────────
 
-def fetch_candles(symbol: str, timeframe: str, limit: int, use_mock: bool = True):
-    """拉 K 线数据，优先 mock（无外部依赖）。"""
-    if use_mock:
-        candles = _generate_mock_candles_v2(symbol, timeframe, limit)
-    else:
-        # 真实 OKX 数据（需要网络）
+# Binance BTCUSDT → OKX BTC-USDT (for symbol conversion)
+def _to_okx_symbol(symbol: str) -> str:
+    """Convert Binance-style symbol (BTCUSDT) to OKX-style (BTC-USDT)."""
+    s = symbol.upper()
+    if "-" in s:
+        return s
+    for quote in ("USDT", "USDC", "USD", "BTC", "ETH"):
+        if s.endswith(quote):
+            return f"{s[: -len(quote)]}-{quote}"
+    return s
+
+
+class FetchResult(TypedDict):
+    opens: "np.ndarray"
+    highs: "np.ndarray"
+    lows: "np.ndarray"
+    closes: "np.ndarray"
+    volumes: "np.ndarray"
+    times: list[int]
+
+
+def fetch_candles(symbol: str, timeframe: str, limit: int, source: str = "mock") -> FetchResult:
+    """
+    拉 K 线数据，支持 mock / OKX / Binance 三种数据源。
+
+    source:
+        mock    — 本地生成（无网络依赖，默认）
+        okx     — OKX 公共 REST API（需要网络，无需 API key）
+        binance — Binance 公共 REST API（需要网络，无需 API key）
+
+    Returns (highs, lows, closes, volumes, times).
+    Raises RuntimeError if all sources fail.
+    """
+    candles: list[dict]
+
+    if source == "mock":
+        candles = [_make_candle(c) for c in _generate_mock_candles_v2(symbol, timeframe, limit)]
+
+    elif source == "okx":
         try:
-            import asyncio
+            import asyncio as _asyncio
             from app.data.okx import OkxClient
+
+            okx_sym = _to_okx_symbol(symbol)
+            # Binance-style interval (1h, 4h, 1d) → OKX needs (1H, 4H, 1D)
+            okx_interval = _OKX_INTERVAL_MAP.get(timeframe, timeframe.upper())
             client = OkxClient()
-            raw = asyncio.get_event_loop().run_until_complete(
-                client.get_klines(symbol, timeframe, limit)
-            )
-            candles = [Candle(**r) for r in raw]
+            _asyncio.run(client.init())
+            raw_rows = _asyncio.run(client.get_klines(okx_sym, okx_interval, limit))
+            candles = [_make_candle(r) for r in raw_rows]
+            _asyncio.run(client.close())
         except Exception as e:
-            print(f"[WARN] OKX fetch failed ({e}), falling back to mock", file=sys.stderr)
-            candles = _generate_mock_candles_v2(symbol, timeframe, limit)
+            warnings.warn(f"[WARN] OKX fetch failed for {symbol} {timeframe}: {e} — falling back to mock")
+            candles = [_make_candle(c) for c in _generate_mock_candles_v2(symbol, timeframe, limit)]
+
+    elif source == "binance":
+        try:
+            import asyncio as _asyncio
+            from app.data.binance import BinanceClient
+
+            binance_sym = symbol.upper().replace("-", "")
+            client = BinanceClient()
+            _asyncio.run(client.init())
+            raw_rows = _asyncio.run(client.get_klines(binance_sym, timeframe, limit))
+            candles = [_make_candle(r) for r in raw_rows]
+            _asyncio.run(client.close())
+        except Exception as e:
+            warnings.warn(f"[WARN] Binance fetch failed for {symbol} {timeframe}: {e} — falling back to mock")
+            candles = [_make_candle(c) for c in _generate_mock_candles_v2(symbol, timeframe, limit)]
+
+    else:
+        raise ValueError(f"Unknown source: {source}")
 
     if not candles:
         raise RuntimeError(f"No candles returned for {symbol} {timeframe}")
 
-    opens  = np.array([c.open   for c in candles], dtype=np.float64)
-    highs  = np.array([c.high   for c in candles], dtype=np.float64)
-    lows   = np.array([c.low    for c in candles], dtype=np.float64)
-    closes = np.array([c.close  for c in candles], dtype=np.float64)
-    volumes= np.array([c.volume for c in candles], dtype=np.float64)
-    times  = [c.time for c in candles]
+    opens  = np.array([c["open"]   for c in candles], dtype=np.float64)
+    highs  = np.array([c["high"]   for c in candles], dtype=np.float64)
+    lows   = np.array([c["low"]    for c in candles], dtype=np.float64)
+    closes = np.array([c["close"]  for c in candles], dtype=np.float64)
+    volumes= np.array([c["volume"] for c in candles], dtype=np.float64)
+    times  = [c["time"] for c in candles]
 
-    return opens, highs, lows, closes, volumes, times
+    return FetchResult(opens=opens, highs=highs, lows=lows, closes=closes, volumes=volumes, times=times)
+
+
+def _make_candle(r) -> dict:
+    """Normalise candle data from any source into a flat dict.
+
+    Real API: dict with keys  (time, open, high, low, close, volume)
+    Mock:     Candle Pydantic object with attribute access
+    """
+    if isinstance(r, dict):
+        return {"time": int(r["time"]), "open": float(r["open"]),
+                "high": float(r["high"]), "low": float(r["low"]),
+                "close": float(r["close"]), "volume": float(r["volume"])}
+    # Pydantic / dataclass object
+    return {"time": int(r.time), "open": float(r.open),
+            "high": float(r.high), "low": float(r.low),
+            "close": float(r.close), "volume": float(r.volume)}
 
 
 # ── 回测引擎 ─────────────────────────────────────────────────────────────────
@@ -201,7 +287,7 @@ def backtest(
     limit: int = 2000,
     forward_bars: int = 5,
     thresholds: list[int] = None,
-    use_mock: bool = True,
+    source: str = "mock",
 ) -> dict:
     """
     在历史 K 线上回测 confluence_score 的方向命中率。
@@ -220,8 +306,10 @@ def backtest(
     if thresholds is None:
         thresholds = [60, 70, 75, 80]
 
-    opens, highs, lows, closes, volumes, times = fetch_candles(
-        symbol, timeframe, limit, use_mock
+    result = fetch_candles(symbol, timeframe, limit, source=source)
+    opens, highs, lows, closes, volumes, times = (
+        result["opens"], result["highs"], result["lows"],
+        result["closes"], result["volumes"], result["times"],
     )
     n = len(closes)
 
@@ -509,47 +597,354 @@ def print_result(r: dict):
     print()
 
 
+# ── 多币种扫描 ────────────────────────────────────────────────────────────────
+
+def scan_all(
+    symbols: list[str] | None = None,
+    timeframes: list[str] | None = None,
+    sources: list[str] | None = None,
+    limit: int = 2000,
+    forward_bars: int = 5,
+    thresholds: list[int] | None = None,
+) -> list[dict]:
+    """
+    在 (symbol × timeframe × source) 网格上运行回测，返回汇总结果列表。
+    """
+    if symbols is None:
+        symbols = ["BTC-USDT", "ETH-USDT", "SOL-USDT", "DOGE-USDT", "XRP-USDT"]
+    if timeframes is None:
+        timeframes = ["1h", "4h", "1d"]
+    if sources is None:
+        sources = ["mock", "okx"]
+    if thresholds is None:
+        thresholds = [60, 70, 75, 80]
+
+    results: list[dict] = []
+    for sym in symbols:
+        for tf in timeframes:
+            for src in sources:
+                print(f"[scan] {sym} {tf} ({src})...", flush=True)
+                try:
+                    r = backtest(
+                        symbol=sym, timeframe=tf, limit=limit,
+                        forward_bars=forward_bars, thresholds=thresholds,
+                        source=src,
+                    )
+                    if r:
+                        r["_source"] = src
+                        results.append(r)
+                        _print_single_result(r)
+                except Exception as e:
+                    print(f"[scan] {sym} {tf} ({src}) ERROR: {e}", file=sys.stderr)
+    return results
+
+
+def _print_single_result(r: dict):
+    """Print minimal one-liner after each scan cell."""
+    src = r.get("_source", "unknown")
+    sig_rows = r.get("signal_stats", [])
+    long_hit = short_hit = None
+    for row in sig_rows:
+        if row["signal"] == "long ↑":
+            try:
+                long_hit = float(row["hit_rate"].rstrip("%"))
+            except (ValueError, AttributeError):
+                pass
+        elif row["signal"] == "short ↓":
+            try:
+                short_hit = float(row["hit_rate"].rstrip("%"))
+            except (ValueError, AttributeError):
+                pass
+    mean_hit = (long_hit + short_hit) / 2 if long_hit is not None and short_hit is not None else None
+    vs_50 = mean_hit - 50 if mean_hit is not None else None
+    marker = f"**+{vs_50:.1f}%** ✅" if vs_50 is not None and vs_50 > 3 else (f"{vs_50:+.1f}% ❌" if vs_50 is not None and vs_50 < -10 else f"{vs_50:+.1f}% ≈" if vs_50 is not None else "—")
+    print(
+        f"  → n={r['total_records']} | "
+        f"long_hit={long_hit:.1f}% short_hit={short_hit:.1f}% "
+        f"mean={mean_hit:.1f}% vs_50%={marker}"
+    )
+
+
+def print_multi_scan_table(results: list[dict]):
+    """Pretty-print the full multi-asset scan as a markdown-style table."""
+    if not results:
+        print("No results to display.")
+        return
+
+    print(f"\n{'='*100}")
+    print("## Multi-Asset Scan: {} cells".format(len(results)))
+    print(f"{'='*100}\n")
+
+    print(
+        f"{'Symbol':<12} {'TF':<5} {'Src':<8} {'n':<6} "
+        f"{'Long%':<8} {'Short%':<8} {'Mean%':<8} {'vs 50%':<12} {'Status'}"
+    )
+    print("-" * 100)
+
+    for r in results:
+        src = r.get("_source", "mock")
+        sig_rows = r.get("signal_stats", [])
+        long_hit = short_hit = None
+        for row in sig_rows:
+            if row["signal"] == "long ↑":
+                try:
+                    long_hit = float(row["hit_rate"].rstrip("%"))
+                except (ValueError, AttributeError):
+                    pass
+            elif row["signal"] == "short ↓":
+                try:
+                    short_hit = float(row["hit_rate"].rstrip("%"))
+                except (ValueError, AttributeError):
+                    pass
+        mean_hit = (long_hit + short_hit) / 2 if long_hit is not None and short_hit is not None else None
+        vs_50 = mean_hit - 50 if mean_hit is not None else None
+
+        long_str = f"{long_hit:.1f}%" if long_hit is not None else "—"
+        short_str = f"{short_hit:.1f}%" if short_hit is not None else "—"
+        mean_str = f"{mean_hit:.1f}%" if mean_hit is not None else "—"
+
+        if vs_50 is not None:
+            if vs_50 > 3:
+                status = "✅"
+            elif vs_50 < -10:
+                status = "❌"
+            else:
+                status = "≈"
+            vs_str = f"{vs_50:+.1f}% {status}"
+        else:
+            vs_str = "—"
+
+        print(
+            f"{r['symbol']:<12} {r['timeframe']:<5} {src:<8} {r['total_records']:<6} "
+            f"{long_str:<8} {short_str:<8} {mean_str:<8} {vs_str:<12}"
+        )
+
+    print()
+
+
+# ── Markdown 报告 ─────────────────────────────────────────────────────────────
+
+def write_markdown_report(path: str, results: list[dict], single_result: dict | None = None):
+    """
+    将回测结果写入 markdown 报告文件。
+
+    Args:
+        path:  报告输出路径（如 reports/bt-2026-09-27.md）
+        results: scan_all 返回的列表（multi-asset 模式）
+        single_result: 单币种 backtest 结果（单币种模式）
+    """
+    import os
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    with open(path, "w") as f:
+        f.write(f"# Backtest Report\n\n")
+        f.write(f"Generated at {now_str}\n\n")
+
+        # ── Multi-asset section ─────────────────────────────────────────────
+        if results:
+            f.write("## Multi-Asset Scan Summary\n\n")
+            f.write(
+                f"| Symbol | TF | Source | n | Long% | Short% | Mean% | vs 50% |\n"
+                f"|--------|----|--------|---|-------|--------|-------|--------|\n"
+            )
+            for r in results:
+                src = r.get("_source", "mock")
+                sig_rows = r.get("signal_stats", [])
+                long_hit = short_hit = None
+                for row in sig_rows:
+                    if row["signal"] == "long ↑":
+                        try:
+                            long_hit = float(row["hit_rate"].rstrip("%"))
+                        except (ValueError, AttributeError):
+                            pass
+                    elif row["signal"] == "short ↓":
+                        try:
+                            short_hit = float(row["hit_rate"].rstrip("%"))
+                        except (ValueError, AttributeError):
+                            pass
+                mean_hit = (long_hit + short_hit) / 2 if long_hit is not None and short_hit is not None else None
+                vs_50 = mean_hit - 50 if mean_hit is not None else None
+
+                long_str = f"{long_hit:.1f}%" if long_hit is not None else "—"
+                short_str = f"{short_hit:.1f}%" if short_hit is not None else "—"
+                mean_str = f"{mean_hit:.1f}%" if mean_hit is not None else "—"
+                vs_str = f"{vs_50:+.1f}% ✅" if vs_50 is not None and vs_50 > 3 else (
+                    f"{vs_50:+.1f}% ❌" if vs_50 is not None and vs_50 < -10 else (
+                        f"{vs_50:+.1f}% ≈" if vs_50 is not None else "—"
+                    )
+                )
+                f.write(
+                    f"| {r['symbol']} | {r['timeframe']} | {src} "
+                    f"| {r['total_records']} | {long_str} | {short_str} | {mean_str} | {vs_str} |\n"
+                )
+
+            # ── ASCII histogram of mean hit rates ──────────────────────────
+            f.write("\n### Mean Hit Rate Distribution\n\n")
+            f.write("```\n")
+            for r in results:
+                src = r.get("_source", "mock")
+                sig_rows = r.get("signal_stats", [])
+                long_hit = short_hit = None
+                for row in sig_rows:
+                    if row["signal"] == "long ↑":
+                        try:
+                            long_hit = float(row["hit_rate"].rstrip("%"))
+                        except (ValueError, AttributeError):
+                            pass
+                    elif row["signal"] == "short ↓":
+                        try:
+                            short_hit = float(row["hit_rate"].rstrip("%"))
+                        except (ValueError, AttributeError):
+                            pass
+                mean_hit = (long_hit + short_hit) / 2 if long_hit is not None and short_hit is not None else 50.0
+                bar_len = max(0, min(50, int(mean_hit - 30)))
+                bar = "█" * bar_len
+                vs_50 = mean_hit - 50
+                marker = "+" if vs_50 >= 0 else ""
+                f.write(
+                    f"  {r['symbol']:<10} {r['timeframe']:<4} {src:<8} "
+                    f"{mean_hit:5.1f}% |{bar} {marker}{vs_50:+.1f}%\n"
+                )
+            f.write("```\n")
+
+        # ── Single-asset section ────────────────────────────────────────────
+        elif single_result:
+            r = single_result
+            f.write(f"## Single Asset: {r['symbol']} {r['timeframe']}\n\n")
+            f.write(f"- Total records: {r['total_records']}\n")
+            f.write(f"- Forward bars: {r.get('forward_bars', '?')}\n")
+            f.write(f"- Limit: {r.get('limit', '?')}\n\n")
+
+            f.write("### Signal Distribution\n\n")
+            f.write(
+                f"| Signal | Count | Hit Rate | Avg % | Confluence Avg |\n"
+                f"|--------|-------|----------|-------|----------------|\n"
+            )
+            for row in r.get("signal_stats", []):
+                f.write(
+                    f"| {row['signal']} | {row['count']} | "
+                    f"{row['hit_rate']} | {row['avg_pct']} | {row['conf_avg']} |\n"
+                )
+
+            f.write("\n### Score Threshold × Hit Rate\n\n")
+            f.write(
+                f"| Threshold | Count | Long% | Short% | Conf Avg | Hit% | vs 50% |\n"
+                f"|-----------|-------|-------|--------|----------|------|--------|\n"
+            )
+            for row in r.get("thresholds", []):
+                f.write(
+                    f"| {row['threshold']} | {row['count']} | "
+                    f"{row['long_pct']} | {row['short_pct']} | "
+                    f"{row['conf_avg']} | {row['signal_hit']} | {row['vs_baseline']} |\n"
+                )
+
+            f.write("\n### Score Bucket Distribution\n\n")
+            f.write(
+                f"| Range | Count | Long% | Short% | Mixed% | Hit% | Avg% |\n"
+                f"|-------|-------|-------|--------|--------|------|------|\n"
+            )
+            for row in r.get("score_buckets", []):
+                f.write(
+                    f"| {row['range']} | {row['count']} | "
+                    f"{row['long_pct']} | {row['short_pct']} | "
+                    f"{row['mixed_pct']} | {row['signal_hit']} | {row['avg_pct']} |\n"
+                )
+
+        f.write(f"\n---\n*Generated by backtest_confluence.py*\n")
+
+    print(f"[report] Written to {path}")
+
+
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="回测 multi_indicator_confluence 评分命中率")
-    parser.add_argument("--symbol",      default="BTC-USDT")
-    parser.add_argument("--timeframe",  default="1h")
+    parser = argparse.ArgumentParser(
+        description="回测 multi_indicator_confluence 评分命中率",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # mock 数据单币种（向后兼容）
+  PYTHONPATH=. python scripts/backtest_confluence.py --symbol BTC-USDT --timeframe 1h
+
+  # OKX 真实数据
+  PYTHONPATH=. python scripts/backtest_confluence.py --symbol BTC-USDT --timeframe 1h --source okx
+
+  # Binance 真实数据
+  PYTHONPATH=. python scripts/backtest_confluence.py --symbol BTCUSDT --timeframe 1h --source binance
+
+  # 多币种扫描（5×3×2=30 个组合）
+  PYTHONPATH=. python scripts/backtest_confluence.py --scan-all
+
+  # 扫描并写 markdown 报告
+  PYTHONPATH=. python scripts/backtest_confluence.py --scan-all --report /tmp/scan-2026-09-27.md
+""",
+    )
+    parser.add_argument("--symbol",       default="BTC-USDT")
+    parser.add_argument("--timeframe",   default="1h")
     parser.add_argument("--limit",       type=int, default=2000)
-    parser.add_argument("--forward-bars",type=int, default=5)
-    parser.add_argument("--thresholds",  type=str, default="60,70,75,80")
-    parser.add_argument("--no-mock",     action="store_true")
-    parser.add_argument("--symbols",     type=str, default="BTC-USDT,ETH-USDT,SOL-USDT")
+    parser.add_argument("--forward-bars", type=int, default=5)
+    parser.add_argument("--thresholds",   type=str, default="60,70,75,80")
+    parser.add_argument(
+        "--source",
+        choices=["mock", "okx", "binance"],
+        default="mock",
+        help="Data source: mock (no network) | okx (real OKX public) | binance (real Binance public)",
+    )
+    # 多币种扫描参数
+    parser.add_argument("--scan-all",     action="store_true",
+                        help="Scan all symbol × timeframe × source combinations")
+    parser.add_argument("--symbols",      type=str,
+                        default="BTC-USDT,ETH-USDT,SOL-USDT,DOGE-USDT,XRP-USDT")
     parser.add_argument("--timeframes",  type=str, default="1h,4h,1d")
-    parser.add_argument("--multi",       action="store_true")
+    parser.add_argument("--sources",      type=str, default="mock,okx")
+    # 报告参数
+    parser.add_argument("--report",       type=str, default=None,
+                        help="Write markdown report to this path (e.g. reports/bt-2026-09-27.md)")
+    # 向后兼容
+    parser.add_argument("--no-mock",     action="store_true",
+                        help="(Deprecated) Use --source okx instead")
+    parser.add_argument("--multi",        action="store_true",
+                        help="(Deprecated) Use --scan-all instead")
+
     args = parser.parse_args()
 
     thresholds = [int(t.strip()) for t in args.thresholds.split(",")]
 
-    if args.multi:
-        symbols_list    = [s.strip() for s in args.symbols.split(",")]
-        timeframes_list = [t.strip() for t in args.timeframes.split(",")]
-        for sym in symbols_list:
-            for tf in timeframes_list:
-                r = backtest(
-                    symbol       = sym,
-                    timeframe    = tf,
-                    limit        = args.limit,
-                    forward_bars = args.forward_bars,
-                    thresholds   = thresholds,
-                    use_mock     = not args.no_mock,
-                )
-                print_result(r)
+    # 旧兼容：如果传了 --no-mock 或 --multi，自动切换行为
+    effective_source = args.source
+    if args.no_mock and args.source == "mock":
+        # 优先用 okx（--no-mock 的历史语义）
+        effective_source = "okx"
+
+    if args.scan_all or args.multi:
+        symbols_list   = [s.strip() for s in args.symbols.split(",")]
+        tf_list        = [t.strip() for t in args.timeframes.split(",")]
+        src_list       = [s.strip() for s in args.sources.split(",")]
+        results = scan_all(
+            symbols=symbols_list,
+            timeframes=tf_list,
+            sources=src_list,
+            limit=args.limit,
+            forward_bars=args.forward_bars,
+            thresholds=thresholds,
+        )
+        print_multi_scan_table(results)
+        if args.report:
+            write_markdown_report(args.report, results=results)
     else:
         r = backtest(
-            symbol       = args.symbol,
-            timeframe    = args.timeframe,
-            limit        = args.limit,
-            forward_bars = args.forward_bars,
-            thresholds   = thresholds,
-            use_mock     = not args.no_mock,
+            symbol=args.symbol,
+            timeframe=args.timeframe,
+            limit=args.limit,
+            forward_bars=args.forward_bars,
+            thresholds=thresholds,
+            source=effective_source,
         )
         print_result(r)
+        if args.report:
+            write_markdown_report(args.report, results=[], single_result=r)
 
 
 if __name__ == "__main__":
