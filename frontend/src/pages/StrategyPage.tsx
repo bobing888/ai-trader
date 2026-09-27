@@ -9,16 +9,18 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
+  CheckCircle2,
   Copy,
   Download,
   Edit3,
   FileUp,
   Github,
   Plus,
-  RefreshCw,
   Search,
   Trash2,
   Upload,
+  Zap,
 } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -36,10 +38,14 @@ import {
   type Strategy,
   type StrategyCreate,
 } from "@/lib/api";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const SOURCE_LABELS: Record<string, string> = {
   manual: "自建",
@@ -47,6 +53,152 @@ const SOURCE_LABELS: Record<string, string> = {
   github: "GitHub",
   builtin: "内置",
 };
+
+const STRATEGY_TYPE_COLORS: Record<string, "bull" | "bear" | "warning" | "info" | "accent" | "default"> = {
+  trend: "bull",
+  mean_reversion: "bear",
+  momentum: "warning",
+  volatility: "info",
+  volume: "accent",
+  custom: "default",
+};
+
+const STATUS_CONFIG: Record<string, { label: string; tone: "bull" | "bear" | "warning" | "muted" }> = {
+  enabled: { label: "已启用", tone: "bull" },
+  disabled: { label: "已禁用", tone: "muted" },
+  draft: { label: "草稿", tone: "warning" },
+  error: { label: "错误", tone: "bear" },
+};
+
+// ─── Relative time helper ─────────────────────────────────────────────────────
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} 天前`;
+  return new Date(dateStr).toLocaleDateString("zh-CN");
+}
+
+function codeLineCount(code: string): number {
+  return code ? code.split("\n").length : 0;
+}
+
+// ─── Sync status badge (used in header + detail page) ─────────────────────────
+
+type SyncState = "idle" | "syncing" | "success" | "failed";
+
+function getSyncState(
+  syncPending: boolean,
+  lastSyncAt: string | undefined,
+  lastError: string | undefined,
+): SyncState {
+  if (syncPending) return "syncing";
+  if (lastError) return "failed";
+  if (lastSyncAt) return "success";
+  return "idle";
+}
+
+function SyncStatusButton({
+  syncPending,
+  lastSyncAt,
+  lastError,
+  onSync,
+  disabled,
+}: {
+  syncPending: boolean;
+  lastSyncAt?: string;
+  lastError?: string;
+  onSync: () => void;
+  disabled: boolean;
+}) {
+  const state = getSyncState(syncPending, lastSyncAt, lastError);
+
+  if (state === "success") {
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        leftIcon={<CheckCircle2 className="w-3.5 h-3.5 text-bull" />}
+        className="text-bull border-bull/20"
+        onClick={onSync}
+        disabled={syncPending || disabled}
+        loading={syncPending}
+      >
+        已同步 {lastSyncAt ? relativeTime(lastSyncAt) : ""}
+      </Button>
+    );
+  }
+
+  if (state === "failed") {
+    return (
+      <div className="group relative">
+        <Button
+          variant="secondary"
+          size="sm"
+          leftIcon={<AlertTriangle className="w-3.5 h-3.5 text-bear" />}
+          className="text-bear border-bear/20"
+          onClick={onSync}
+          disabled={syncPending || disabled}
+          loading={syncPending}
+        >
+          同步失败
+        </Button>
+        {lastError && (
+          <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10 w-64 rounded-lg bg-bg-secondary border border-bear/25 px-3 py-2 text-[11px] text-text-secondary shadow-xl">
+            {lastError}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      leftIcon={<Github className="w-3.5 h-3.5" />}
+      onClick={onSync}
+      disabled={syncPending || disabled}
+      loading={syncPending}
+    >
+      {syncPending ? "同步中..." : "同步 GitHub"}
+    </Button>
+  );
+}
+
+// ─── Badge helpers ─────────────────────────────────────────────────────────────
+
+function TypeBadge({ type }: { type: string }) {
+  const tone = STRATEGY_TYPE_COLORS[type] ?? "default";
+  return (
+    <Badge tone={tone} className="text-[10px]">
+      {type}
+    </Badge>
+  );
+}
+
+function SourceBadge({ source }: { source: string }) {
+  const isGithub = source.startsWith("github:");
+  const label = isGithub ? "GitHub" : SOURCE_LABELS[source] ?? source;
+  const tone = isGithub ? "info" : source === "manual" ? "accent" : source === "import" ? "warning" : "muted";
+  return (
+    <Badge tone={tone} className="text-[10px]">
+      {label}
+    </Badge>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const cfg = STATUS_CONFIG[status] ?? { label: status, tone: "muted" as const };
+  return <Badge tone={cfg.tone} className="text-[10px]">{cfg.label}</Badge>;
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export function StrategyPage() {
   const queryClient = useQueryClient();
@@ -107,6 +259,9 @@ export function StrategyPage() {
       queryClient.invalidateQueries({ queryKey: ["strategies"] });
       queryClient.invalidateQueries({ queryKey: ["github-sync-status"] });
     },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["github-sync-status"] });
+    },
   });
 
   const filtered = (strategies ?? []).filter((s) => {
@@ -117,10 +272,15 @@ export function StrategyPage() {
 
   const selected = strategies?.find((s) => s.id === selectedId);
 
+  // Summary stats
+  const enabledCount = (strategies ?? []).filter((s) => s.status === "enabled").length;
+  const disabledCount = (strategies ?? []).filter((s) => s.status === "disabled").length;
+  const githubCount = syncStatus?.github_strategies_count ?? 0;
+
   return (
     <div className="space-y-4">
       {/* Header */}
-      <header className="flex flex-wrap items-center justify-between gap-3">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">策略管理</h1>
           <p className="text-xs text-text-tertiary mt-1">
@@ -128,16 +288,13 @@ export function StrategyPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            leftIcon={<Github className="w-3.5 h-3.5" />}
-            onClick={() => syncMut.mutate()}
-            disabled={syncMut.isPending || !syncStatus?.enabled}
-            loading={syncMut.isPending}
-          >
-            同步 GitHub
-          </Button>
+          <SyncStatusButton
+            syncPending={syncMut.isPending}
+            lastSyncAt={syncMut.data?.synced_at}
+            lastError={syncMut.data?.error}
+            onSync={() => syncMut.mutate()}
+            disabled={!syncStatus?.enabled}
+          />
           <Button
             variant="secondary"
             size="sm"
@@ -182,23 +339,34 @@ export function StrategyPage() {
         </div>
       </header>
 
-      {/* Sync status banner */}
-      {syncStatus && (
-        <div className="rounded-xl bg-bg-secondary border border-[rgba(255,240,220,0.06)] p-3 flex flex-wrap items-center gap-3 text-[11px]">
-          <span className="flex items-center gap-1.5 text-text-tertiary">
-            <RefreshCw className="w-3 h-3" />
-            GitHub 同步
-          </span>
-          <span className="text-text-secondary">
-            已收录 <span className="font-semibold text-text-primary tabular-nums">{syncStatus.github_strategies_count}</span> 条
-          </span>
-          <span className="text-text-tertiary">·</span>
-          <span className="text-text-tertiary">每 {syncStatus.interval_hours}h 自动 · 手动可触发</span>
-          {syncMut.data && (
-            <span className="text-bull">
-              本次同步：新增 {syncMut.data.added} / 跳过 {syncMut.data.skipped}
+      {/* Page summary bar */}
+      {!isLoading && (
+        <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-bg-secondary border border-[rgba(255,240,220,0.08)] px-4 py-2.5 text-xs">
+          <div className="flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-accent" />
+            <span className="text-text-secondary">策略总数</span>
+            <span className="font-semibold text-text-primary tabular-nums">
+              {(strategies ?? []).length}
             </span>
-          )}
+          </div>
+          <div className="w-px h-3.5 bg-[rgba(255,240,220,0.08)]" />
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-bull" />
+            <span className="text-text-secondary">启用</span>
+            <span className="font-semibold text-bull tabular-nums">{enabledCount}</span>
+          </div>
+          <div className="w-px h-3.5 bg-[rgba(255,240,220,0.08)]" />
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-text-tertiary" />
+            <span className="text-text-secondary">禁用</span>
+            <span className="font-semibold text-text-secondary tabular-nums">{disabledCount}</span>
+          </div>
+          <div className="w-px h-3.5 bg-[rgba(255,240,220,0.08)]" />
+          <div className="flex items-center gap-1.5">
+            <Github className="w-3.5 h-3.5 text-info" />
+            <span className="text-text-secondary">GitHub</span>
+            <span className="font-semibold text-info tabular-nums">{githubCount}</span>
+          </div>
         </div>
       )}
 
@@ -216,7 +384,7 @@ export function StrategyPage() {
               />
             </div>
             <div className="flex items-center gap-1.5 text-[10px]">
-              {[["", "全部"], ["enabled", "已启用"], ["disabled", "已禁用"]].map(([v, l]) => (
+              {([["", "全部"], ["enabled", "已启用"], ["disabled", "已禁用"]] as const).map(([v, l]) => (
                 <button
                   key={v}
                   onClick={() => setStatusFilter(v)}
@@ -233,36 +401,49 @@ export function StrategyPage() {
 
           <ul className="max-h-[60vh] overflow-y-auto">
             {isLoading && (
-              <li className="p-3"><Skeleton className="h-12 w-full" /></li>
+              <>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <li key={i} className="p-3 border-b border-[rgba(255,240,220,0.04)]">
+                    <Skeleton className="h-14 w-full" />
+                  </li>
+                ))}
+              </>
             )}
             {error && (
-              <li className="p-3"><ErrorState title={(error as Error).message} /></li>
+              <li className="p-3">
+                <ErrorState title={(error as Error).message} />
+              </li>
             )}
-            {!isLoading && filtered.length === 0 && (
-              <li className="p-6 text-center text-text-tertiary text-xs">暂无策略</li>
+            {!isLoading && filtered.length === 0 && !error && (
+              <li className="p-6">
+                <EmptyState
+                  icon={<Zap className="w-5 h-5" />}
+                  title="还没有策略"
+                  description="创建一个策略或从 GitHub 同步，开始你的量化之旅"
+                  action={
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      leftIcon={<Plus className="w-3.5 h-3.5" />}
+                      onClick={() => {
+                        const name = window.prompt("策略名称");
+                        if (!name) return;
+                        createMut.mutate({ name, description: "", parameters: {}, code: "" });
+                      }}
+                    >
+                      创建第一个策略
+                    </Button>
+                  }
+                />
+              </li>
             )}
             {filtered.map((s) => (
               <li key={s.id}>
-                <button
+                <StrategyListItem
+                  strategy={s}
+                  selected={selectedId === s.id}
                   onClick={() => { setSelectedId(s.id); setEditing(false); }}
-                  className={cn(
-                    "w-full text-left p-3 border-b border-[rgba(255,240,220,0.04)] hover:bg-bg-tertiary/40 transition-colors",
-                    selectedId === s.id && "bg-accent/10",
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-text-primary truncate">{s.name}</span>
-                    <SourceBadge source={s.source} />
-                  </div>
-                  <p className="text-[10px] text-text-tertiary line-clamp-1 mt-0.5">
-                    {s.description || "(无描述)"}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1.5 text-[10px] text-text-tertiary">
-                    <span className={cn("w-1.5 h-1.5 rounded-full", s.status === "enabled" ? "bg-bull" : "bg-text-tertiary")} />
-                    {s.status === "enabled" ? "已启用" : "已禁用"}
-                    <span>· 权重 {s.weight}</span>
-                  </div>
-                </button>
+                />
               </li>
             ))}
           </ul>
@@ -270,20 +451,35 @@ export function StrategyPage() {
 
         {/* Detail panel */}
         <div className="rounded-2xl bg-bg-secondary border border-[rgba(255,240,220,0.06)] overflow-hidden min-h-[400px]">
-          {!selected ? (
-            <div className="p-12 text-center text-text-tertiary text-sm">
-              选择一个策略查看详情，或点击「新建」开始
+          {!selected && !isLoading ? (
+            <div className="flex items-center justify-center h-full min-h-[300px]">
+              <EmptyState
+                icon={<Zap className="w-6 h-6" />}
+                title="选择一个策略"
+                description="从左侧列表选择一个策略查看详情，或点击「新建」开始"
+              />
             </div>
-          ) : editing ? (
+          ) : isLoading ? (
+            <div className="p-6 space-y-4">
+              <Skeleton className="h-8 w-48" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          ) : selected && editing ? (
             <StrategyEditor
               strategy={selected}
               onCancel={() => setEditing(false)}
               onSave={(payload) => updateMut.mutate({ id: selected.id, payload })}
               saving={updateMut.isPending}
             />
-          ) : (
+          ) : selected ? (
             <StrategyDetail
               strategy={selected}
+              syncPending={syncMut.isPending}
+              lastSyncAt={syncMut.data?.synced_at}
+              lastSyncError={syncMut.data?.error}
+              syncEnabled={!!syncStatus?.enabled}
+              onSync={() => syncMut.mutate()}
               onEdit={() => setEditing(true)}
               onDelete={() => {
                 if (window.confirm(`确认删除「${selected.name}」？`)) {
@@ -306,72 +502,184 @@ export function StrategyPage() {
                 }
               }}
             />
-          )}
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
-function SourceBadge({ source }: { source: string }) {
-  const label = source.startsWith("github:") ? "GitHub" : SOURCE_LABELS[source] ?? source;
-  const tone =
-    source === "manual" ? "bg-accent/15 text-accent"
-    : source.startsWith("github:") ? "bg-bull/10 text-bull"
-    : source === "import" ? "bg-warning/10 text-warning"
-    : "bg-bg-tertiary text-text-tertiary";
+// ─── Strategy list item ───────────────────────────────────────────────────────
+
+function StrategyListItem({
+  strategy,
+  selected,
+  onClick,
+}: {
+  strategy: Strategy;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const paramCount = Object.keys(strategy.parameters ?? {}).length;
+
   return (
-    <span className={cn("text-[9px] px-1.5 py-0.5 rounded-md uppercase tracking-wider font-semibold shrink-0", tone)}>
-      {label}
-    </span>
+    <button
+      onClick={onClick}
+      className={cn(
+        "w-full text-left p-3 border-b border-[rgba(255,240,220,0.04)] hover:bg-bg-tertiary/40 transition-colors",
+        selected && "bg-accent/10",
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-text-primary truncate">{strategy.name}</span>
+        <SourceBadge source={strategy.source} />
+      </div>
+      <p className="text-[10px] text-text-tertiary line-clamp-1 mt-0.5">
+        {strategy.description || "(无描述)"}
+      </p>
+      {/* 4 badges row */}
+      <div className="flex flex-wrap items-center gap-1 mt-1.5">
+        <TypeBadge type={strategy.strategy_type} />
+        <StatusBadge status={strategy.status} />
+        {paramCount > 0 && (
+          <span className="text-[9px] text-text-tertiary px-1.5 py-0.5 rounded-full bg-bg-tertiary">
+            {paramCount} 个参数
+          </span>
+        )}
+      </div>
+    </button>
   );
 }
 
+// ─── Strategy detail ──────────────────────────────────────────────────────────
+
 function StrategyDetail({
   strategy,
+  syncPending,
+  lastSyncAt,
+  lastSyncError,
+  syncEnabled,
+  onSync,
   onEdit,
   onDelete,
   onClone,
   onExport,
 }: {
   strategy: Strategy;
+  syncPending: boolean;
+  lastSyncAt?: string;
+  lastSyncError?: string;
+  syncEnabled: boolean;
+  onSync: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onClone: () => void;
   onExport: () => void;
 }) {
+  const paramCount = Object.keys(strategy.parameters ?? {}).length;
+  const lines = codeLineCount(strategy.code);
+  const isGithub = strategy.source.startsWith("github:");
+
   return (
     <div className="p-5 space-y-4">
+      {/* Header row: title + badges + actions */}
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
             <h2 className="text-lg font-semibold text-text-primary truncate">{strategy.name}</h2>
+            <TypeBadge type={strategy.strategy_type} />
             <SourceBadge source={strategy.source} />
+            <StatusBadge status={strategy.status} />
           </div>
-          <p className="text-xs text-text-tertiary mt-1">{strategy.description || "(无描述)"}</p>
-          <p className="text-[10px] text-text-tertiary mt-1 tabular-nums">
-            创建 {new Date(strategy.created_at).toLocaleString("zh-CN")} · 更新 {new Date(strategy.updated_at).toLocaleString("zh-CN")}
-          </p>
+          <p className="text-xs text-text-tertiary">{strategy.description || "(无描述)"}</p>
         </div>
+
+        {/* Action group — right side */}
         <div className="flex items-center gap-1 shrink-0">
-          <Button variant="ghost" size="sm" leftIcon={<Edit3 className="w-3.5 h-3.5" />} onClick={onEdit}>编辑</Button>
-          <Button variant="ghost" size="sm" leftIcon={<Copy className="w-3.5 h-3.5" />} onClick={onClone}>克隆</Button>
-          <Button variant="ghost" size="sm" leftIcon={<Download className="w-3.5 h-3.5" />} onClick={onExport}>导出</Button>
-          <Button variant="ghost" size="sm" leftIcon={<Trash2 className="w-3.5 h-3.5" />} onClick={onDelete}>删除</Button>
+          {/* Edit group */}
+          <Button variant="ghost" size="sm" leftIcon={<Edit3 className="w-3.5 h-3.5" />} onClick={onEdit}>
+            编辑
+          </Button>
+          <div className="w-px h-4 bg-[rgba(255,240,220,0.08)] mx-0.5" />
+          {/* Copy group */}
+          <Button variant="ghost" size="sm" leftIcon={<Copy className="w-3.5 h-3.5" />} onClick={onClone}>
+            克隆
+          </Button>
+          <Button variant="ghost" size="sm" leftIcon={<Download className="w-3.5 h-3.5" />} onClick={onExport}>
+            导出
+          </Button>
+          <div className="w-px h-4 bg-[rgba(255,240,220,0.08)] mx-0.5" />
+          {/* Danger group */}
+          <Button
+            variant="ghost"
+            size="sm"
+            leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+            className="text-bear hover:text-bear hover:bg-bear/10"
+            onClick={onDelete}
+          >
+            删除
+          </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <Stat label="类型" value={strategy.strategy_type} />
-        <Stat label="状态" value={strategy.status === "enabled" ? "已启用" : "已禁用"} />
-        <Stat label="权重" value={strategy.weight.toFixed(2)} />
-        <Stat label="参数数" value={Object.keys(strategy.parameters).length} />
+      {/* Danger warning */}
+      <div className="flex items-center gap-1.5 text-[10px] text-bear/70">
+        <AlertTriangle className="w-3 h-3" />
+        删除不可恢复
+      </div>
+
+      {/* Strategy overview card */}
+      <div className="rounded-xl bg-bg-tertiary/50 border border-[rgba(255,240,220,0.06)] p-3 space-y-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
+          <div className="flex items-center gap-1.5 text-text-tertiary">
+            <span>创建</span>
+            <span className="text-text-secondary font-medium">{relativeTime(strategy.created_at)}</span>
+          </div>
+          <div className="w-px h-3 bg-[rgba(255,240,220,0.06)]" />
+          <div className="flex items-center gap-1.5 text-text-tertiary">
+            <span>更新</span>
+            <span className="text-text-secondary font-medium">{relativeTime(strategy.updated_at)}</span>
+          </div>
+          <div className="w-px h-3 bg-[rgba(255,240,220,0.06)]" />
+          <div className="flex items-center gap-1.5 text-text-tertiary">
+            <span>代码</span>
+            <span className="text-text-secondary font-medium tabular-nums">{lines} 行</span>
+          </div>
+          <div className="w-px h-3 bg-[rgba(255,240,220,0.06)]" />
+          <div className="flex items-center gap-1.5 text-text-tertiary">
+            <span>参数</span>
+            <span className="text-text-secondary font-medium tabular-nums">{paramCount} 个</span>
+          </div>
+          {isGithub && (
+            <>
+              <div className="w-px h-3 bg-[rgba(255,240,220,0.06)]" />
+              <div className="flex items-center gap-1.5 text-text-tertiary">
+                <Github className="w-3 h-3" />
+                <span className="text-info font-medium truncate max-w-[200px]">
+                  {strategy.source.replace("github:", "")}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* GitHub sync status inline */}
+        <div className="flex items-center gap-2 pt-1.5 border-t border-[rgba(255,240,220,0.06)]">
+          <span className="text-[10px] text-text-tertiary">GitHub 同步</span>
+          <SyncStatusButton
+            syncPending={syncPending}
+            lastSyncAt={lastSyncAt}
+            lastError={lastSyncError}
+            onSync={onSync}
+            disabled={!syncEnabled}
+          />
+        </div>
       </div>
 
       <div>
         <h3 className="text-[10px] uppercase tracking-wider text-text-tertiary font-semibold mb-1.5">参数</h3>
         <pre className="rounded-lg bg-bg-tertiary p-3 text-[11px] font-mono text-text-primary overflow-x-auto">
-          {Object.keys(strategy.parameters).length > 0
+          {paramCount > 0
             ? JSON.stringify(strategy.parameters, null, 2)
             : "(无参数)"}
         </pre>
@@ -386,6 +694,8 @@ function StrategyDetail({
     </div>
   );
 }
+
+// ─── Strategy editor ──────────────────────────────────────────────────────────
 
 function StrategyEditor({
   strategy,
@@ -421,7 +731,19 @@ function StrategyEditor({
       }}
       className="p-5 space-y-3"
     >
-      <h2 className="text-sm font-medium text-text-primary mb-1">编辑策略</h2>
+      {/* Header + save/cancel group */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-medium text-text-primary">编辑策略</h2>
+        <div className="flex items-center gap-2">
+          <Button variant="primary" type="submit" size="sm" leftIcon={<FileUp className="w-3.5 h-3.5" />} loading={saving}>
+            保存
+          </Button>
+          <Button variant="ghost" type="button" size="sm" onClick={onCancel}>
+            取消
+          </Button>
+        </div>
+      </div>
+
       <Field label="名称">
         <input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} required />
       </Field>
@@ -450,12 +772,6 @@ function StrategyEditor({
       <Field label="代码">
         <textarea value={code} onChange={(e) => setCode(e.target.value)} className={`${inputCls} h-64 font-mono text-[11px]`} />
       </Field>
-      <div className="flex items-center gap-2 pt-2">
-        <Button variant="primary" type="submit" size="sm" leftIcon={<FileUp className="w-3.5 h-3.5" />} loading={saving}>
-          保存
-        </Button>
-        <Button variant="ghost" type="button" size="sm" onClick={onCancel}>取消</Button>
-      </div>
     </form>
   );
 }
@@ -469,14 +785,5 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="block text-[10px] uppercase tracking-wider text-text-tertiary font-semibold mb-1">{label}</span>
       {children}
     </label>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg bg-bg-tertiary px-3 py-2">
-      <p className="text-[10px] text-text-tertiary uppercase tracking-wider">{label}</p>
-      <p className="text-sm font-semibold tabular-nums mt-0.5 truncate">{value}</p>
-    </div>
   );
 }
