@@ -144,50 +144,56 @@ export function TrendAnalysisPanel({ candles, symbol, timeframe }: TrendAnalysis
         <span className="text-[10px] text-text-tertiary uppercase tracking-wider">实时计算 · 基于最近 100 根 K 线</span>
       </CardHeader>
       <CardBody className="space-y-4">
-        {/* Top: Verdict + score gauge */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-4">
-          <div className={cn("rounded-xl border border-border-subtle p-4 flex flex-col gap-2", style.bg)}>
-            <div className="flex items-center gap-2">
-              <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center ring-1", style.bg, style.ring)}>
-                <Icon className={cn("w-4 h-4", style.color)} />
-              </div>
-              <div>
-                <p className="text-[10px] text-text-tertiary uppercase tracking-wider">综合判读</p>
-                <p className={cn("text-lg font-semibold leading-tight", style.color)}>{style.label}</p>
-              </div>
+        {/* Verdict megabadge */}
+        <div className={cn(
+          "rounded-xl border px-5 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4",
+          style.bg,
+          `border-current/20`,
+        )}>
+          <div className="flex items-center gap-3">
+            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center ring-1", style.bg, style.ring)}>
+              <Icon className={cn("w-5 h-5", style.color)} />
             </div>
-            <p className="text-xs text-text-secondary leading-relaxed">{style.description}</p>
+            <div>
+              <p className="text-[9px] text-text-tertiary uppercase tracking-widest">综合判读</p>
+              <p className={cn("text-[36px] font-black leading-none tracking-tight", style.color)}>
+                {style.label}
+              </p>
+            </div>
           </div>
+          <p className="text-sm text-text-secondary leading-relaxed sm:border-l sm:border-current/10 sm:pl-4 sm:ml-auto max-w-[280px]">
+            {style.description}
+          </p>
+        </div>
 
-          {/* Score bar */}
-          <div className="rounded-xl border border-border-subtle p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] text-text-tertiary uppercase tracking-wider">多空力量对比</span>
-              <span className="text-xs text-text-secondary tabular-nums">
-                {analysis.score > 0 ? "+" : ""}{analysis.score.toFixed(0)} / 100
-              </span>
-            </div>
-            <div className="relative h-2.5 rounded-full overflow-hidden bg-bg-tertiary">
-              <div
-                className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 bg-bear/60"
-                style={{ width: `${Math.min(50, Math.abs(analysis.score) / 2)}%`, transform: analysis.score >= 0 ? undefined : `translateX(-100%)` }}
-              />
-              <div
-                className={cn(
-                  "absolute top-0 bottom-0 left-1/2 rounded-full transition-all",
-                  analysis.score >= 0 ? "bg-bull" : "bg-bear",
-                )}
-                style={{
-                  width: `${Math.min(50, Math.abs(analysis.score) / 2)}%`,
-                  transform: analysis.score >= 0 ? "translateX(0)" : "translateX(-100%)",
-                }}
-              />
-            </div>
-            <div className="flex justify-between mt-1.5">
-              <span className="text-[10px] text-bear">空头</span>
-              <span className="text-[10px] text-text-tertiary">0</span>
-              <span className="text-[10px] text-bull">多头</span>
-            </div>
+        {/* Top: score gauge */}
+        <div className="rounded-xl border border-border-subtle p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] text-text-tertiary uppercase tracking-wider">多空力量对比</span>
+            <span className="text-xs text-text-secondary tabular-nums">
+              {analysis.score > 0 ? "+" : ""}{analysis.score.toFixed(0)} / 100
+            </span>
+          </div>
+          <div className="relative h-2.5 rounded-full overflow-hidden bg-bg-tertiary">
+            <div
+              className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 bg-bear/60"
+              style={{ width: `${Math.min(50, Math.abs(analysis.score) / 2)}%`, transform: analysis.score >= 0 ? undefined : `translateX(-100%)` }}
+            />
+            <div
+              className={cn(
+                "absolute top-0 bottom-0 left-1/2 rounded-full transition-all",
+                analysis.score >= 0 ? "bg-bull" : "bg-bear",
+              )}
+              style={{
+                width: `${Math.min(50, Math.abs(analysis.score) / 2)}%`,
+                transform: analysis.score >= 0 ? "translateX(0)" : "translateX(-100%)",
+              }}
+            />
+          </div>
+          <div className="flex justify-between mt-1.5">
+            <span className="text-[10px] text-bear">空头</span>
+            <span className="text-[10px] text-text-tertiary">0</span>
+            <span className="text-[10px] text-bull">多头</span>
           </div>
         </div>
 
