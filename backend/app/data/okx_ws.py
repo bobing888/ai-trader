@@ -124,7 +124,7 @@ class OkxWsClient:
             else:
                 sub = _Subscription(channel=channel, inst_id=inst)
                 self._subs[key] = sub
-                if self._conn is not None and not self._conn.closed:
+                if self._conn is not None and getattr(self._conn, "close_code", None) is None:
                     await self._send_subscribe([{"channel": channel, "instId": inst}])
         return sub.queue
 
@@ -138,7 +138,7 @@ class OkxWsClient:
             else:
                 sub = _Subscription(channel=channel, inst_id=inst)
                 self._subs[key] = sub
-                if self._conn is not None and not self._conn.closed:
+                if self._conn is not None and getattr(self._conn, "close_code", None) is None:
                     await self._send_subscribe([{"channel": channel, "instId": inst}])
         return sub.queue
 
@@ -269,7 +269,7 @@ class OkxWsClient:
         """每 HEARTBEAT_INTERVAL 秒发一次 ping。"""
         while self._running:
             await asyncio.sleep(HEARTBEAT_INTERVAL)
-            if self._conn is not None and not self._conn.closed:
+            if self._conn is not None and getattr(self._conn, "close_code", None) is None:
                 try:
                     await self._conn.send(json.dumps({"op": "ping"}))
                     logger.debug("[OKX WS] ping sent")
