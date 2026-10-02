@@ -39,6 +39,7 @@ def _patch_external_io(monkeypatch):
 def test_lifespan_initializes_signal_change_bus():
     """lifespan 启动后 get_signal_bus() 应可用。"""
     from fastapi import FastAPI
+
     from app.main import lifespan
     from app.services.signal_change_bus import get_signal_bus
 
@@ -55,6 +56,7 @@ def test_lifespan_initializes_signal_change_bus():
 def test_lifespan_initializes_follow_scheduler():
     """lifespan 启动后 get_follow_scheduler() 应可用。"""
     from fastapi import FastAPI
+
     from app.main import lifespan
     from app.services.follow_scheduler import get_follow_scheduler
 

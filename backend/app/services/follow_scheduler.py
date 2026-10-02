@@ -19,9 +19,8 @@ from app.services.follow_service import FollowService
 from app.services.signal_change_bus import SignalChangeBus
 
 if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
 
-    from app.db.models import RecommendationHistory, UserFollow
+    from app.db.models import UserFollow
 
 logger = logging.getLogger(__name__)
 

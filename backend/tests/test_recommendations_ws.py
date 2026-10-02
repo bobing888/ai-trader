@@ -9,6 +9,7 @@ import pytest
 os.environ.setdefault("AI_TRADER_STRATEGIES_DB_PATH", "/tmp/test_recs_ws.db")
 
 from fastapi.testclient import TestClient  # noqa: E402
+
 from app.main import app  # noqa: E402
 
 
@@ -38,10 +39,9 @@ def _patch_external_io(monkeypatch):
 
 def test_ws_connection_accepted():
     """ws endpoint 应 accept connection 不立即断开。"""
-    with TestClient(app) as client:
-        with client.websocket_connect("/api/recommendations/ws") as ws:
-            # 连接建立即可 — 后续 emit 才会推送
-            pass
+    with TestClient(app) as client, client.websocket_connect("/api/recommendations/ws") as ws:
+        # 连接建立即可 — 后续 emit 才会推送
+        pass
 
 
 def test_ws_receives_signal_change():
@@ -66,8 +66,6 @@ def test_ws_receives_signal_change():
         # 改为 connect 后立即 emit:
         with client.websocket_connect("/api/recommendations/ws") as ws:
             # emit 在另一线程(线程内部 loop 跑后,推到同一 bus queue)
-            result_holder = []
-
             def emit_in_thread():
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)

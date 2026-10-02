@@ -1,6 +1,5 @@
 """test_follow_service — TDD: FollowService CRUD + PnL mock compute (spec §4.4)"""
 
-from datetime import UTC, datetime, timedelta
 
 from app.services.follow_service import FollowService
 
@@ -83,10 +82,10 @@ def test_compute_pnl_default_stake_uses_class_default():
 
 def test_create_follow_sets_defaults():
     """create() 应填 status=open / entry_time=now / stake_amount=100。"""
-    from app.db.models import UserFollow
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-    from app.db.models import Base
+
+    from app.db.models import Base, UserFollow
 
     eng = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(eng)
@@ -112,6 +111,7 @@ def test_close_follow_writes_pnl():
     """close() 应算 pnl_pct + pnl_abs 并设 status=closed。"""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+
     from app.db.models import Base
 
     eng = create_engine("sqlite:///:memory:")
@@ -142,6 +142,7 @@ def test_close_already_closed_raises():
     """close() 已 closed 的跟单 → 抛 ValueError。"""
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+
     from app.db.models import Base
 
     eng = create_engine("sqlite:///:memory:")
@@ -159,7 +160,7 @@ def test_close_already_closed_raises():
         FollowService.close(db, follow.id, exit_price=99.0, exit_reason="manual")
         try:
             FollowService.close(db, follow.id, exit_price=98.0, exit_reason="manual")
-            assert False, "should raise"
+            raise AssertionError("should raise")
         except ValueError:
             pass
     finally:
@@ -169,6 +170,7 @@ def test_close_already_closed_raises():
 def test_cancel_follow_sets_cancelled_status():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+
     from app.db.models import Base
 
     eng = create_engine("sqlite:///:memory:")
@@ -192,6 +194,7 @@ def test_cancel_follow_sets_cancelled_status():
 def test_list_follows_filters_by_status():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+
     from app.db.models import Base
 
     eng = create_engine("sqlite:///:memory:")

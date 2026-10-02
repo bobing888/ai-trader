@@ -6,6 +6,8 @@ GET /api/recommendations/latest?pair=&timeframe=         → most recent
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -21,10 +23,10 @@ router = APIRouter(prefix="/api/recommendations", tags=["recommendations"])
 
 @router.get("/history", response_model=RecommendationHistoryList)
 def get_history(
-    pair: str = Query(..., description="OKX 形态 pair"),
-    timeframe: str = Query(..., description="5m|15m|1h|4h|1d"),
-    limit: int = Query(default=60, ge=1, le=500),
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
+    pair: Annotated[str, Query(description="OKX 形态 pair")],
+    timeframe: Annotated[str, Query(description="5m|15m|1h|4h|1d")],
+    limit: Annotated[int, Query(ge=1, le=500)] = 60,
 ) -> RecommendationHistoryList:
     items = (
         db.query(RecommendationHistory)
@@ -42,9 +44,9 @@ def get_history(
 
 @router.get("/latest", response_model=RecommendationHistoryOut)
 def get_latest(
-    pair: str = Query(..., description="OKX 形态 pair"),
-    timeframe: str = Query(..., description="5m|15m|1h|4h|1d"),
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
+    pair: Annotated[str, Query(description="OKX 形态 pair")],
+    timeframe: Annotated[str, Query(description="5m|15m|1h|4h|1d")],
 ) -> RecommendationHistory:
     rec = (
         db.query(RecommendationHistory)
@@ -54,5 +56,5 @@ def get_latest(
         .first()
     )
     if rec is None:
-        raise HTTPException(status_code=404, detail=f"No recommendation for {pair}/{timeframe}")
+        raise HTTPException(status_code=404, detail=f"No recommendation for {pair}/{timeframe}") from None
     return rec

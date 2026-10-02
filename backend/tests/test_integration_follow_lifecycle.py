@@ -9,7 +9,6 @@
 
 import os
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -138,10 +137,10 @@ def test_full_lifecycle_target_profit():
 
 def test_expired_after_24h():
     """hours_ago=25 → expired。"""
-    from app.db.session import SessionLocal
-    from app.services.follow_service import FollowService
-    from app.services.follow_scheduler import FollowScheduler
     from app.db.models import UserFollow
+    from app.db.session import SessionLocal
+    from app.services.follow_scheduler import FollowScheduler
+    from app.services.follow_service import FollowService
 
     db = SessionLocal()
     try:
@@ -173,14 +172,15 @@ def test_expired_after_24h():
 
 def test_reversal_long_to_short_with_history():
     """3-min 窗口里 2 帧都 short → consecutive_reversal。"""
-    from app.db.session import SessionLocal
-    from app.services.signal_change_detector import detect_reversal
+    from datetime import timedelta
+
     from app.db.models import (
         RecommendationHistory,
-        UserFollow,
         RecommendationOutcome,
+        UserFollow,
     )
-    from datetime import timedelta
+    from app.db.session import SessionLocal
+    from app.services.signal_change_detector import detect_reversal
 
     db = SessionLocal()
     try:

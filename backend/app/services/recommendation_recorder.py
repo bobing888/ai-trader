@@ -21,9 +21,9 @@ from app.config import settings
 from app.services.signal_change_bus import SignalChangeBus, SignalChangeEvent
 
 if TYPE_CHECKING:
+
     from app.data.okx_ws import OkxWsClient
     from app.db.models import RecommendationHistory
-    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +176,6 @@ class RecommendationRecorder:
                 .order_by(RecommendationHistory.scanned_at.desc())
                 .first()
             )
-            prev_id = previous.id if previous else None
         finally:
             db.close()
 
@@ -210,8 +209,8 @@ class RecommendationRecorder:
             timeframe,
         )
 
-    def _build_record(self, pair: str, timeframe: str, signal) -> "RecommendationHistory":
-        from app.db.models import RecommendationOutcome, RecommendationHistory
+    def _build_record(self, pair: str, timeframe: str, signal) -> RecommendationHistory:
+        from app.db.models import RecommendationHistory, RecommendationOutcome
 
         if signal is None:
             return RecommendationHistory(
@@ -248,7 +247,7 @@ class RecommendationRecorder:
         )
 
     async def _write_no_data(self, pair: str, timeframe: str, reason: str) -> None:
-        from app.db.models import RecommendationOutcome, RecommendationHistory
+        from app.db.models import RecommendationHistory, RecommendationOutcome
 
         record = RecommendationHistory(
             pair=pair,
@@ -271,7 +270,7 @@ class RecommendationRecorder:
         logger.debug("[recorder] %s %s NO_DATA: %s", pair, timeframe, reason)
 
     async def _write_error(self, pair: str, timeframe: str, err: str) -> None:
-        from app.db.models import RecommendationOutcome, RecommendationHistory
+        from app.db.models import RecommendationHistory, RecommendationOutcome
 
         record = RecommendationHistory(
             pair=pair,

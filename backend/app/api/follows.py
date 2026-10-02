@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -34,7 +36,10 @@ router = APIRouter(prefix="/api/follows", tags=["follows"])
 
 
 @router.post("", response_model=UserFollowOut, status_code=200)
-def create_follow(payload: UserFollowCreate, db: Session = Depends(get_db)) -> UserFollow:
+def create_follow(
+    payload: UserFollowCreate,
+    db: Annotated[Session, Depends(get_db)],
+) -> UserFollow:
     if payload.stake_amount is None:
         payload.stake_amount = settings.follow_default_stake_amount
     follow = FollowService.create(db, payload.model_dump())
@@ -43,10 +48,10 @@ def create_follow(payload: UserFollowCreate, db: Session = Depends(get_db)) -> U
 
 @router.get("", response_model=FollowListOut)
 def list_follows(
-    status: str = Query(default="all", description="open|closed|cancelled|all"),
-    pair: str | None = None,
-    limit: int = Query(default=50, ge=1, le=500),
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
+    status: Annotated[str, Query(description="open|closed|cancelled|all")] = "all",
+    pair: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
 ) -> FollowListOut:
     items = FollowService.list(db, status=status, pair=pair, limit=limit)
     total = db.query(UserFollow).count()
@@ -54,7 +59,10 @@ def list_follows(
 
 
 @router.get("/{follow_id}", response_model=UserFollowOut)
-def get_follow(follow_id: int, db: Session = Depends(get_db)) -> UserFollow:
+def get_follow(
+    follow_id: int,
+    db: Annotated[Session, Depends(get_db)],
+) -> UserFollow:
     follow = FollowService.get(db, follow_id)
     if follow is None:
         raise HTTPException(status_code=404, detail=f"Follow {follow_id} not found")
@@ -65,27 +73,27 @@ def get_follow(follow_id: int, db: Session = Depends(get_db)) -> UserFollow:
 def close_follow(
     follow_id: int,
     payload: FollowCloseRequest,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ) -> UserFollow:
     try:
         return FollowService.close(db, follow_id, payload.exit_price, payload.exit_reason or "manual")
     except ValueError as exc:
         msg = str(exc)
         if "not found" in msg:
-            raise HTTPException(status_code=404, detail=msg)
-        raise HTTPException(status_code=409, detail=msg)
+            raise HTTPException(status_code=404, detail=msg) from exc
+        raise HTTPException(status_code=409, detail=msg) from exc
 
 
 @router.post("/{follow_id}/cancel", response_model=UserFollowOut)
 def cancel_follow(
     follow_id: int,
     payload: FollowCancelRequest,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ) -> UserFollow:
     try:
         return FollowService.cancel(db, follow_id, reason=payload.reason or "manual")
     except ValueError as exc:
         msg = str(exc)
         if "not found" in msg:
-            raise HTTPException(status_code=404, detail=msg)
-        raise HTTPException(status_code=409, detail=msg)
+            raise HTTPException(status_code=404, detail=msg) from exc
+        raise HTTPException(status_code=409, detail=msg) from exc

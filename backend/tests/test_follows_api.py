@@ -7,6 +7,7 @@ import pytest
 os.environ.setdefault("AI_TRADER_STRATEGIES_DB_PATH", "/tmp/test_follows_api.db")
 
 from fastapi.testclient import TestClient  # noqa: E402
+
 from app.main import app  # noqa: E402
 
 
