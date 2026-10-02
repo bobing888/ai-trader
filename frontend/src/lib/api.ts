@@ -132,11 +132,18 @@ export async function fetchBatchTickers(symbols: string[]): Promise<SymbolMeta[]
 
 export type RegimeName = "bull" | "bear" | "choppy" | "crisis";
 
+// v2: Timeframe category (matches backend TimeframeCategory enum)
+export type TimeframeCategory = "ultra_short" | "short" | "mid" | "long";
+
 export interface RegimeInfo {
   regime: RegimeName;
   confidence: number;
   regime_probs: Record<RegimeName, number>;
   description: string;
+  // v2 fields
+  adx?: number | null;
+  hurst?: number | null;
+  trend_strength_label?: string | null;
 }
 
 export interface RecommendationSignal {
@@ -150,6 +157,12 @@ export interface RecommendationSignal {
   regime: RegimeName;
   regime_confidence: number;
   generated_at: string;
+  // v2 fields
+  timeframe?: string;
+  timeframe_category?: "ultra_short" | "short" | "mid" | "long";
+  suggested_leverage?: number;
+  min_agreement_used?: number;
+  fast_path?: boolean;
 }
 
 export interface SignalResponse {
