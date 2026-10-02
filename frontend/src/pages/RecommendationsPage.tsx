@@ -27,6 +27,7 @@ import {
   type BatchSignalsResponse,
   type TimeframeCategory,
 } from "@/lib/api";
+import type { EntryLevel } from "@/lib/api";
 import { useKlineStore } from "@/stores/klineStore";
 
 const DEFAULT_PAIRS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT"];
@@ -700,6 +701,13 @@ function EnhancedSignalCard({ item, timeframe }: { item: BatchSignalItem; timefr
           timeframe={timeframe}
           direction={signal.direction}
           leverage={signal.suggested_leverage ?? 1}
+          entryLevels={signal.entry_levels}
+          stopLossPrice={signal.stop_loss_price}
+          takeProfit1Price={signal.take_profit_1_price}
+          takeProfit2Price={signal.take_profit_2_price}
+          atr={signal.atr}
+          riskRewardRatio={signal.risk_reward_ratio}
+          quality={signal.quality}
         />
       </CardBody>
     </Card>
@@ -713,11 +721,25 @@ function FollowButton({
   timeframe,
   direction,
   leverage,
+  entryLevels,
+  stopLossPrice,
+  takeProfit1Price,
+  takeProfit2Price,
+  atr,
+  riskRewardRatio,
+  quality,
 }: {
   pair: string;
   timeframe: string;
   direction: "long" | "short";
   leverage: number;
+  entryLevels?: EntryLevel[];
+  stopLossPrice?: number | null;
+  takeProfit1Price?: number | null;
+  takeProfit2Price?: number | null;
+  atr?: number | null;
+  riskRewardRatio?: number | null;
+  quality?: "high" | "medium" | "low" | "reject" | null;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -740,6 +762,13 @@ function FollowButton({
         timeframe={timeframe}
         direction={direction}
         recommendedLeverage={leverage}
+        entryLevels={entryLevels}
+        stopLossPrice={stopLossPrice}
+        takeProfit1Price={takeProfit1Price}
+        takeProfit2Price={takeProfit2Price}
+        atr={atr}
+        riskRewardRatio={riskRewardRatio}
+        quality={quality}
       />
     </>
   );

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserFollowCreate(BaseModel):
-    """跟单创建 payload。"""
+    """跟单创建 payload."""
 
     pair: str = Field(..., description="OKX 形态 pair (BTC-USDT)")
     timeframe: str = Field(..., description="5m|15m|1h|4h|1d")
@@ -21,10 +21,17 @@ class UserFollowCreate(BaseModel):
     source: str = Field(default="manual", description="manual|ai_recommendation")
     recommendation_id: int | None = None
     notes: str | None = None
+    # D3: trailing + partial TP
+    trailing_stop_enabled: bool = True
+    partial_tp_enabled: bool = True
+    take_profit_1_price: float | None = None
+    take_profit_2_price: float | None = None
+    entry_atr: float | None = None
+    remaining_size_pct: float = 1.0
 
 
 class UserFollowOut(BaseModel):
-    """跟单详情 + 状态。"""
+    """跟单详情 + 状态."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -49,6 +56,17 @@ class UserFollowOut(BaseModel):
     notes: str | None
     created_at: datetime
     updated_at: datetime
+    # D3: trailing stop + partial TP 实时状态
+    trailing_stop_enabled: bool = True
+    partial_tp_enabled: bool = True
+    current_stop_loss: float | None = None
+    take_profit_1_price: float | None = None
+    take_profit_2_price: float | None = None
+    entry_atr: float | None = None
+    partial_tp_taken: int = 0
+    remaining_size_pct: float = 1.0
+    entry_price_ref: float | None = None
+    risk_reward_ratio: float | None = None
 
 
 class FollowListOut(BaseModel):
@@ -59,6 +77,8 @@ class FollowListOut(BaseModel):
 class FollowCloseRequest(BaseModel):
     exit_price: float
     exit_reason: str | None = None
+    # D3: 支持 partial TP — 0.5 = 平掉 50% 仓位
+    exit_size_pct: float = 1.0
 
 
 class FollowCancelRequest(BaseModel):

@@ -43,6 +43,7 @@ def init_db() -> None:
     # D3: in-place schema migration for existing user_follows tables
     # SQLite 不支持 ALTER TABLE ADD COLUMN with default, 用 try/except 兜底
     _apply_d3_migration()
+    _apply_d1_d2_migration()
 
 
 def _apply_d3_migration() -> None:
@@ -68,6 +69,7 @@ def _apply_d3_migration() -> None:
         ("partial_tp_taken", "INTEGER NOT NULL DEFAULT 0"),
         ("remaining_size_pct", "REAL NOT NULL DEFAULT 1.0"),
         ("entry_price_ref", "REAL"),
+        ("risk_reward_ratio", "REAL"),
     ]
     with engine.begin() as conn:
         for col, decl in migrations:
@@ -76,6 +78,35 @@ def _apply_d3_migration() -> None:
                     conn.execute(text(f"ALTER TABLE user_follows ADD COLUMN {col} {decl}"))
                 except Exception:
                     # Column already exists (race) or other — skip silently
+                    pass
+
+
+def _apply_d1_d2_migration() -> None:
+    """Idempotent migration: add D1/D2 columns to recommendation_history if missing."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "recommendation_history" not in insp.get_table_names():
+        return
+
+    existing = {c["name"] for c in insp.get_columns("recommendation_history")}
+    migrations: list[tuple[str, str]] = [
+        ("entry_levels_json", "TEXT"),
+        ("stop_loss_price", "REAL"),
+        ("take_profit_1_price", "REAL"),
+        ("take_profit_2_price", "REAL"),
+        ("atr", "REAL"),
+        ("risk_reward_ratio", "REAL"),
+        ("current_price", "REAL"),
+        ("quality", "VARCHAR(20)"),
+        ("quality_reasons_json", "TEXT"),
+    ]
+    with engine.begin() as conn:
+        for col, decl in migrations:
+            if col not in existing:
+                try:
+                    conn.execute(text(f"ALTER TABLE recommendation_history ADD COLUMN {col} {decl}"))
+                except Exception:
                     pass
 
 

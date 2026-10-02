@@ -24,6 +24,18 @@ class _FakeFollow:
         self.stop_loss = stop_loss
         self.target = target
         self.entry_time = datetime.now(UTC) - timedelta(hours=hours_ago)
+        # D3 defaults — scheduler needs these to evaluate trailing stop
+        self.entry_atr = None
+        self.entry_price = None
+        self.trailing_stop_enabled = 0
+        self.partial_tp_enabled = 0
+        self.current_stop_loss = stop_loss
+        self.take_profit_1_price = None
+        self.take_profit_2_price = None
+        self.partial_tp_taken = 0
+        self.remaining_size_pct = 1.0
+        self.entry_price_ref = None
+        self.risk_reward_ratio = None
 
 
 def test_stop_loss_triggers_long():

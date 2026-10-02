@@ -37,7 +37,7 @@ def get_history(
         .all()
     )
     return RecommendationHistoryList(
-        items=[RecommendationHistoryOut.model_validate(it) for it in items],
+        items=[RecommendationHistoryOut.from_orm_with_json(it) for it in items],
         total=len(items),
     )
 
@@ -57,4 +57,4 @@ def get_latest(
     )
     if rec is None:
         raise HTTPException(status_code=404, detail=f"No recommendation for {pair}/{timeframe}") from None
-    return rec
+    return RecommendationHistoryOut.from_orm_with_json(rec)
