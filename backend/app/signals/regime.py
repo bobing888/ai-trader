@@ -262,17 +262,22 @@ class RegimeDetector:
         trend_is_bear = has_clear_trend and ndi_val > pdi_val  # type: ignore[operator]
         strong_trend = adx_val is not None and adx_val >= _ADX_STRONG_TREND
 
-        # BULL：正收益 + ADX 多头趋势
+        # BULL：正收益 + ADX 多头趋势（magnitude-proportional）
         if cum_ret > ret_bull_thr:
-            bull_score += 0.5
+            # intensity: 0.05（刚过阈值）→ 1.0（=20倍阈值封顶）
+            intensity = min(1.0, (cum_ret - ret_bull_thr) / (ret_bull_thr * 19) + 0.05)
+            bull_score += 0.1 + 0.4 * intensity
         elif cum_ret > ret_bull_thr / 2:
-            bull_score += 0.25
+            # 部分收益：线性插值 0→0.1
+            ratio = (cum_ret - ret_bull_thr / 2) / (ret_bull_thr / 2)
+            bull_score += 0.1 * max(0.0, ratio)
 
         if trend_is_bull:
-            # v2: ADX 多头趋势是 bull 的强信号
-            bull_score += 0.4
+            # v2: ADX 20→100 映射 0.1→0.5（线性 magnitude）
+            adx_bonus = min(0.5, 0.1 + 0.4 * (adx_val - 20) / 80) if adx_val is not None else 0.0
+            bull_score += adx_bonus
             if strong_trend:
-                bull_score += 0.2  # 强趋势额外加分
+                bull_score += 0.1  # 强趋势微调（不再重复 +0.4）
 
         if mean_vol < vol_normal_max:
             bull_score += 0.15  # v2: 弱化（v1 是 0.2）
@@ -283,16 +288,21 @@ class RegimeDetector:
         if hurst_val is not None and hurst_val > _HURST_TRENDING:
             bull_score += 0.15
 
-        # BEAR：负收益 + ADX 空头趋势
+        # BEAR：负收益 + ADX 空头趋势（magnitude-proportional）
         if cum_ret < ret_bear_thr:
-            bear_score += 0.5
+            # intensity: 0.05（刚过阈值）→ 1.0（=20倍阈值封顶）
+            intensity = min(1.0, (ret_bear_thr - cum_ret) / (-ret_bear_thr * 19) + 0.05)
+            bear_score += 0.1 + 0.4 * intensity
         elif cum_ret < ret_bear_thr / 2:
-            bear_score += 0.25
+            # 部分亏损：线性插值 0→0.1
+            ratio = (ret_bear_thr / 2 - cum_ret) / (ret_bear_thr / 2)
+            bear_score += 0.1 * max(0.0, ratio)
 
         if trend_is_bear:
-            bear_score += 0.4
+            adx_bonus = min(0.5, 0.1 + 0.4 * (adx_val - 20) / 80) if adx_val is not None else 0.0
+            bear_score += adx_bonus
             if strong_trend:
-                bear_score += 0.2
+                bear_score += 0.1  # 强趋势微调（不再重复 +0.4）
 
         if mean_vol < vol_normal_max:
             bear_score += 0.15
