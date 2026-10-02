@@ -126,8 +126,10 @@ def create_app() -> FastAPI:
     app.include_router(notifications_router, prefix="/api", tags=["notifications"])
     # === B-Follow Step 2 ===
     from app.api.follows import router as follows_router
+    from app.api.recommendations import router as recommendations_router
 
     app.include_router(follows_router)
+    app.include_router(recommendations_router)
 
     return app
 
