@@ -20,6 +20,8 @@ from typing import Optional
 
 import numpy as np
 
+from .calibration import calibrate
+from .cost_model import estimate_round_trip_cost
 from .regime import Regime
 from .strategy_pool import (
     STRATEGY_INSTANCES,
@@ -181,7 +183,7 @@ class AggregatedSignal:
     """最终推荐单"""
     pair: str
     direction: str           # "long" | "short"
-    confidence: float         # 0.0–1.0 最终置信度
+    confidence: float         # 0.0–1.0 最终置信度（原始，未校准）
     contributing_strategies: list[str]
     reasons: list[str]
     regime: str
@@ -194,6 +196,9 @@ class AggregatedSignal:
     suggested_leverage: int = 1
     min_agreement_used: int = 2
     fast_path: bool = False   # 是否走 strong-signal 快速通道
+    # Phase 1 signal credibility
+    calibrated_confidence: float | None = None   # 经 per-tf Isotonic 校准后的胜率（None = 冷启动）
+    net_pnl_estimate: float = 0.0                 # 预期净 PnL（confidence * target - cost）
 
 
 class SignalAggregator:
@@ -344,6 +349,14 @@ class SignalAggregator:
         tf_category = categorize_timeframe(tf)
         leverage = suggest_leverage(tf, regime, final_confidence)
 
+        # Phase 1 signal credibility — calibration + cost-aware PnL
+        # 校准后的真实胜率（None = calibrator 冷启动 / 未训练）
+        calibrated = calibrate(final_confidence, tf)
+        # 预期净 PnL = confidence * target_pct - cost
+        target_pct_for_estimate = 0.005   # 默认 0.5% (同 backtest)
+        cost = estimate_round_trip_cost().total_round_trip_pct
+        net_pnl = final_confidence * target_pct_for_estimate - cost
+
         return AggregatedSignal(
             pair=pair,
             direction=best_direction,
@@ -359,6 +372,8 @@ class SignalAggregator:
             suggested_leverage=leverage,
             min_agreement_used=min_agr,
             fast_path=fast_path,
+            calibrated_confidence=calibrated,
+            net_pnl_estimate=net_pnl,
         )
 
     def _compute_entry_zones(
