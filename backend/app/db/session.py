@@ -34,6 +34,8 @@ def init_db() -> None:
         RecommendationHistory,  # noqa: F401
         Strategy,  # noqa: F401
         UserFollow,  # noqa: F401
+        BacktestRun,  # noqa: F401  # Phase 1 signal credibility
+        BacktestTrade,  # noqa: F401
     )
 
     Base.metadata.create_all(bind=engine)

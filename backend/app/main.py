@@ -147,6 +147,10 @@ def create_app() -> FastAPI:
     app.include_router(recommendations_router)
     app.include_router(recommendations_ws_router)
 
+    # === Phase 1 signal credibility ===
+    from app.api.backtest import router as backtest_router
+    app.include_router(backtest_router)
+
     return app
 
 
