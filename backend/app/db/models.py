@@ -103,6 +103,9 @@ class UserFollow(Base):
     pnl_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     pnl_abs: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # mock 跟单本金 USDT（默认 100.0；用户 2026-10-02 决定）
+    stake_amount: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
+
     entry_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     exit_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
