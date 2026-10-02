@@ -75,6 +75,16 @@ async def lifespan(app: FastAPI):
     set_follow_scheduler(follow_scheduler)
     await follow_scheduler.start()
 
+    # === Phase 1 signal credibility: outcome worker (spec §2) ===
+    from app.services.outcome_worker import outcome_worker_loop
+    outcome_task = asyncio.create_task(
+        outcome_worker_loop(
+            session_factory=SessionLocal,
+            okx_client=okx_client,
+        )
+    )
+    logger.info("outcome_worker scheduler started (interval=5min)")
+
     # 启动 GitHub sync 后台循环
     sync_task = None
     if settings.github_sync_enabled:
@@ -87,6 +97,10 @@ async def lifespan(app: FastAPI):
             sync_task.cancel()
             with __import__("contextlib").suppress(asyncio.CancelledError, Exception):
                 await sync_task
+        # Phase 1 outcome_worker 清理
+        outcome_task.cancel()
+        with __import__("contextlib").suppress(asyncio.CancelledError, Exception):
+            await outcome_task
         # === B-Follow Step 2 清理 ===
         await follow_scheduler.stop()
         await recorder.stop()
