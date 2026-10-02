@@ -70,5 +70,26 @@ class Settings(BaseSettings):
     recommendation_refresh_interval: int = 60
     regime_retrain_interval_days: int = 90
 
+    # === B-Follow Step 2: Recommendation Recorder + Follow Scheduler ===
+    # spec §3.3 — 全部 pydantic Field 都有 description
+    # 推荐扫描周期（秒）— OKX WS 1m K 线 confirm 触发
+    recommendation_scan_interval: int = 60
+    # 监控的 pair 列表（OKX 形态：BTC-USDT）
+    recommendation_pairs: list[str] = [
+        "BTC-USDT", "ETH-USDT", "SOL-USDT", "BNB-USDT", "DOGE-USDT", "XRP-USDT",
+    ]
+    # 监控的 timeframe（recorder 本地重采样 1m 到目标）
+    recommendation_timeframes: list[str] = ["5m", "15m", "1h", "1d"]
+    # 历史保留天数（cron 在 lifespan 24h 调度清理）
+    recommendation_history_retention_days: int = 7
+    # 跟单调度周期（秒）— 兜底 tick
+    follow_scan_interval: int = 60
+    # 跟单超过 N 小时强制 closed（expired 出场）
+    follow_max_hours: int = 24
+    # 跟单默认本金 USDT（用户 2026-10-02 决定）
+    follow_default_stake_amount: float = 100.0
+    # PnL 上限（mock 演示用）
+    follow_max_loss_pct: float = 0.5
+
 
 settings = Settings()
