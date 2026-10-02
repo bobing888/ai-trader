@@ -39,6 +39,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    volumes:
+      # 持久化 strategies.db (UserFollow / Strategy / RecommendationHistory)
+      # 否则每次 --force-recreate 重建容器都会丢失跟单数据 (2026-10-02 教训)
+      - backend-data:/app/data
 
   frontend:
     build:
@@ -57,3 +61,4 @@ services:
 
 volumes:
   redis-data:
+  backend-data:
