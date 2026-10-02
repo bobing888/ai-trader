@@ -28,6 +28,7 @@ services:
       AI_TRADER_LOG_LEVEL: "INFO"
       AI_TRADER_USE_MOCK_DATA: "false"
       AI_TRADER_REDIS_URL: "redis://redis:6379/0"
+      AI_TRADER_DATA_SOURCE: "okx"  # kbkkk 区域 Binance 被屏蔽，用 OKX
       AI_TRADER_BINANCE_BASE_URL: "https://api.binance.com"
       AI_TRADER_CORS_ORIGINS_RAW: "http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80,http://154.219.111.145"
     ports:

@@ -45,5 +45,9 @@ logs/
 # ---------- Docker ----------
 docker-compose.override.yml
 
+# ---------- SQLite / runtime data (数据库/SQLite) ----------
+backend/data/
+.worktrees/
+
 # ---------- 0925 self-ref (已迁移到独立仓库) ----------
 0925/
