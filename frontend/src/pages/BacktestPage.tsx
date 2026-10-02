@@ -257,7 +257,7 @@ export function BacktestPage() {
             </div>
             <div className="p-2">
               <EquityCurve
-                data={result.equity_curve.map((p) => ({
+                data={result.equity_curve.map((p: { ts: string; equity: number }) => ({
                   value: p.equity,
                   label: new Date(p.ts).toISOString().slice(5, 16).replace("T", " "),
                 }))}
