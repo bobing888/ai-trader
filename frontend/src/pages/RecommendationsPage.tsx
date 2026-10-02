@@ -5,11 +5,14 @@ import {
   AlertTriangle,
   ArrowUpDown,
   BarChart2,
+  Gauge,
   RefreshCw,
   Shield,
+  Sparkles,
   Target,
   TrendingDown,
   TrendingUp,
+  Zap,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
@@ -17,12 +20,33 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils";
-import { fetchBatchSignals, type BatchSignalItem, type BatchSignalsResponse } from "@/lib/api";
+import {
+  fetchBatchSignals,
+  type BatchSignalItem,
+  type BatchSignalsResponse,
+  type TimeframeCategory,
+} from "@/lib/api";
 import { useKlineStore } from "@/stores/klineStore";
 
 const DEFAULT_PAIRS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT"];
-const TIMEFRAMES = ["1h", "4h", "1d"] as const;
-type Timeframe = (typeof TIMEFRAMES)[number];
+
+// v2: 4 档分类（超短线/短线/中线/长线）
+type RawTimeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
+interface TimeframeOption {
+  value: RawTimeframe;
+  category: TimeframeCategory;
+  label: string;
+  shortLabel: string;
+  defaultLeverage: number;
+  icon: typeof Zap;
+}
+
+const TIMEFRAMES: TimeframeOption[] = [
+  { value: "5m",  category: "ultra_short", label: "超短线",   shortLabel: "5m",  defaultLeverage: 5, icon: Zap },
+  { value: "15m", category: "short",       label: "短线",     shortLabel: "15m", defaultLeverage: 3, icon: TrendingUp },
+  { value: "1h",  category: "mid",         label: "中线",     shortLabel: "1h",  defaultLeverage: 2, icon: BarChart2 },
+  { value: "1d",  category: "long",        label: "长线",     shortLabel: "1d",  defaultLeverage: 1, icon: Shield },
+];
 
 type SortKey = "confidence" | "regime" | "pair";
 
@@ -216,6 +240,59 @@ function RegimeTag({ regime }: { regime: string | undefined }) {
   return <Badge tone={cfg.tone}>{cfg.label}</Badge>;
 }
 
+// ─── v2: Leverage Badge ───────────────────────────────────────────────────────
+
+function LeverageBadge({ leverage, timeframeCategory }: {
+  leverage: number;
+  timeframeCategory: TimeframeCategory | undefined;
+}) {
+  if (!timeframeCategory || timeframeCategory === "long") return null;
+
+  const isHighLeverage = leverage >= 3;
+  const isMidLeverage = leverage === 2;
+
+  return (
+    <Badge
+      tone={isHighLeverage ? "warning" : isMidLeverage ? "info" : "default"}
+      className="text-[10px] font-bold tabular-nums"
+    >
+      <Zap className="w-2.5 h-2.5 mr-0.5" />
+      {leverage}x
+    </Badge>
+  );
+}
+
+// ─── v2: Trend Strength (ADX) Indicator ───────────────────────────────────────
+
+function TrendStrengthBadge({ adx, label }: {
+  adx: number | null | undefined;
+  label: string | null | undefined;
+}) {
+  if (adx == null || label == null) return null;
+
+  let tone: "bull" | "warning" | "default" = "default";
+  if (adx >= 30) tone = "bull";
+  else if (adx >= 20) tone = "warning";
+
+  return (
+    <Badge tone={tone} className="text-[10px]">
+      <Gauge className="w-2.5 h-2.5 mr-0.5" />
+      ADX {adx.toFixed(0)} · {label}
+    </Badge>
+  );
+}
+
+// ─── v2: Fast-path Indicator ──────────────────────────────────────────────────
+
+function FastPathBadge() {
+  return (
+    <Badge tone="info" className="text-[10px]">
+      <Sparkles className="w-2.5 h-2.5 mr-0.5" />
+      强信号
+    </Badge>
+  );
+}
+
 // ─── Timeframe Tag ────────────────────────────────────────────────────────────
 
 function TimeframeTag({ timeframe }: { timeframe: string | undefined }) {
@@ -299,13 +376,13 @@ export function RecommendationsPage() {
   const { t } = useTranslation();
   const { symbol: _storeSymbol } = useKlineStore();
   const [selectedPairs] = useState<string[]>(DEFAULT_PAIRS);
-  const [timeframe, setTimeframe] = useState<Timeframe>("1h");
+  const [timeframeOpt, setTimeframeOpt] = useState<TimeframeOption>(TIMEFRAMES[2]); // 默认 1h 中线
   const [sortKey, setSortKey] = useState<SortKey>("confidence");
   const [directionFilter, setDirectionFilter] = useState<"all" | "long" | "short">("all");
 
   const { data, isLoading, isFetching, refetch, error } = useQuery<BatchSignalsResponse, Error>({
-    queryKey: ["batch-signals", selectedPairs, timeframe],
-    queryFn: () => fetchBatchSignals(selectedPairs, timeframe),
+    queryKey: ["batch-signals", selectedPairs, timeframeOpt.value],
+    queryFn: () => fetchBatchSignals(selectedPairs, timeframeOpt.value),
     staleTime: 60_000,
     refetchInterval: 120_000,
   });
@@ -328,6 +405,7 @@ export function RecommendationsPage() {
   });
 
   const globalRegime = data?.regime_global;
+  const TFIcon = timeframeOpt.icon;
 
   return (
     <div className="flex flex-col gap-5">
@@ -336,26 +414,34 @@ export function RecommendationsPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{t("nav.recommendations")}</h1>
           <p className="text-sm text-text-secondary mt-0.5">
-            {isLoading ? "分析中..." : `${selectedPairs.length} 个交易对 · ${timeframe} 周期`}
+            {isLoading
+              ? "分析中..."
+              : `${selectedPairs.length} 个交易对 · ${timeframeOpt.label}（${timeframeOpt.value}）`}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Timeframe selector */}
+          {/* v2: 4 档 Timeframe selector（超短线/短线/中线/长线） */}
           <div className="flex rounded-full bg-bg-secondary border border-[rgba(255,240,220,0.08)] p-0.5">
-            {TIMEFRAMES.map((tf) => (
-              <button
-                key={tf}
-                onClick={() => setTimeframe(tf)}
-                className={cn(
-                  "px-3 py-1.5 rounded-full text-xs font-medium transition-all",
-                  timeframe === tf
-                    ? "bg-bg-tertiary text-text-primary"
-                    : "text-text-secondary hover:text-text-primary",
-                )}
-              >
-                {tf}
-              </button>
-            ))}
+            {TIMEFRAMES.map((tf) => {
+              const Icon = tf.icon;
+              const isActive = timeframeOpt.value === tf.value;
+              return (
+                <button
+                  key={tf.value}
+                  onClick={() => setTimeframeOpt(tf)}
+                  className={cn(
+                    "flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-all",
+                    isActive
+                      ? "bg-bg-tertiary text-text-primary"
+                      : "text-text-secondary hover:text-text-primary",
+                  )}
+                  title={`${tf.label} · 默认杠杆 ${tf.defaultLeverage}x`}
+                >
+                  <Icon className="w-3 h-3" />
+                  {tf.shortLabel}
+                </button>
+              );
+            })}
           </div>
           {/* Refresh */}
           <button
@@ -367,6 +453,19 @@ export function RecommendationsPage() {
             <RefreshCw className={cn("w-4 h-4", isFetching && "animate-spin")} />
           </button>
         </div>
+      </div>
+
+      {/* v2: Timeframe category hint */}
+      <div className="flex items-center gap-2 text-xs text-text-tertiary -mt-2">
+        <TFIcon className="w-3 h-3" />
+        <span>
+          {timeframeOpt.label}模式 ·
+          默认杠杆 {timeframeOpt.defaultLeverage}x ·
+          {timeframeOpt.category === "ultra_short" && " 快进快出严控止损"}
+          {timeframeOpt.category === "short" && " 短线操作，1-3 天持仓"}
+          {timeframeOpt.category === "mid" && " 波段操作，数天持仓"}
+          {timeframeOpt.category === "long" && " 趋势跟踪，数周持仓"}
+        </span>
       </div>
 
       {/* Global regime banner */}
@@ -450,7 +549,7 @@ export function RecommendationsPage() {
         <EmptyState
           icon={<Target className="w-6 h-6" />}
           title="当前无推荐信号"
-          description="市场状态不适合入场，建议观望等待机会"
+          description={`${timeframeOpt.label}周期下市场状态不适合入场，可尝试切换其他周期或刷新`}
           action={
             <button
               onClick={() => setDirectionFilter("all")}
@@ -466,7 +565,7 @@ export function RecommendationsPage() {
       {!isLoading && !error && sortedSignals.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {sortedSignals.map((item: BatchSignalItem) => (
-            <EnhancedSignalCard key={item.pair} item={item} timeframe={timeframe} />
+            <EnhancedSignalCard key={item.pair} item={item} timeframe={timeframeOpt.value} />
           ))}
         </div>
       )}
@@ -531,6 +630,13 @@ function EnhancedSignalCard({ item, timeframe }: { item: BatchSignalItem; timefr
             <div className="flex items-center gap-1.5 flex-wrap justify-end">
               <RegimeTag regime={signal.regime} />
               <TimeframeTag timeframe={timeframe} />
+              {/* v2: 杠杆标识（仅超短线/短线显示） */}
+              <LeverageBadge
+                leverage={signal.suggested_leverage ?? 1}
+                timeframeCategory={signal.timeframe_category}
+              />
+              {/* v2: fast-path 标识 */}
+              {signal.fast_path && <FastPathBadge />}
             </div>
           </div>
         </div>
@@ -539,6 +645,16 @@ function EnhancedSignalCard({ item, timeframe }: { item: BatchSignalItem; timefr
         <div className="flex justify-center">
           <ConfidenceRing confidence={signal.confidence} direction={signal.direction} />
         </div>
+
+        {/* v2: ADX 趋势强度（如果是 regime 信息有 ADX） */}
+        {item.regime?.adx != null && item.regime?.trend_strength_label && (
+          <div className="flex justify-center">
+            <TrendStrengthBadge
+              adx={item.regime.adx}
+              label={item.regime.trend_strength_label}
+            />
+          </div>
+        )}
 
         {/* ── Section B: Signal reasons summary ── */}
         {signal.reasons.length > 0 && (

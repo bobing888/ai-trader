@@ -121,14 +121,25 @@ class MomentumStrategy:
         golden_cross = prev_fast <= prev_slow and ema_fast[-1] > ema_slow[-1]
         death_cross = prev_fast >= prev_slow and ema_fast[-1] < ema_slow[-1]
 
-        if regime in ("bull", "choppy") and golden_cross:
+        # v2: 在所有 regime 都允许（choppy + golden_cross 也算有效信号）
+        if regime in ("bull", "choppy", "bear") and golden_cross:
             direction = "long"
             reasons.append(f"EMA({9}) 金叉 EMA({21})")
             confidence = 0.7 + (rsi_val - 50) / 500 if 50 < rsi_val < 70 else 0.7
+            if regime == "choppy":
+                # v2: choppy 中的金叉是趋势启动信号
+                reasons.append("震荡市金叉，可能是趋势启动")
+                confidence = min(1.0, confidence + 0.1)
         elif regime == "bear" and death_cross:
             direction = "short"
             reasons.append(f"EMA({9}) 死叉 EMA({21})")
             confidence = 0.6 + (50 - rsi_val) / 500 if 30 < rsi_val < 50 else 0.6
+        elif regime == "choppy" and death_cross:
+            # v2: choppy 中的死叉也是信号
+            direction = "short"
+            reasons.append(f"EMA({9}) 死叉 EMA({21})")
+            reasons.append("震荡市死叉，可能是下行启动")
+            confidence = 0.65
 
         if rsi_val > 70:
             reasons.append(f"RSI({14})={rsi_val:.0f} 超买")
@@ -153,6 +164,7 @@ class MeanReversionStrategy:
     ID = StrategyId.REVERSAL
 
     def evaluate(self, candles: dict, volumes: np.ndarray, regime: str) -> StrategyResult:
+        """v2: 均值回归放宽 — 在 choppy/bear/bull 都允许触发。"""
         close = np.array(candles["close"], dtype=np.float64)
         ma, upper, lower = bollinger_bands(close)
         rsi_val = rsi(close, 14)[-1]
@@ -161,16 +173,26 @@ class MeanReversionStrategy:
 
         reasons = []
         direction = None
-        confidence = 0.5
+        confidence = 0.0
 
+        # v2: 在 choppy/bull/bear 都允许均值回归
         if price < lower[-1] and rsi_val < 35:
             direction = "long"
             reasons.append(f"价格触及布林下轨 ({price:.2f} < {lower[-1]:.2f})")
+            reasons.append(f"RSI({14})={rsi_val:.0f} 接近超卖")
             confidence = 0.75
+            # v2: choppy + RSI < 30 时强力信号
+            if regime == "choppy" and rsi_val < 30:
+                confidence = 0.85
+                reasons.append("震荡市 + RSI 深度超卖，强力抄底信号")
         elif price > upper[-1] and rsi_val > 65:
             direction = "short"
             reasons.append(f"价格触及布林上轨 ({price:.2f} > {upper[-1]:.2f})")
+            reasons.append(f"RSI({14})={rsi_val:.0f} 接近超买")
             confidence = 0.75
+            if regime == "choppy" and rsi_val > 70:
+                confidence = 0.85
+                reasons.append("震荡市 + RSI 深度超买，强力做空信号")
 
         if bandwidth < 0.03:
             reasons.append(f"布林带收窄 (带宽={bandwidth:.3f})，突破在即")
@@ -182,7 +204,7 @@ class MeanReversionStrategy:
             direction=direction,
             confidence=max(0, min(1, confidence)),
             reasons=tuple(reasons),
-            suitable_regimes=frozenset(["choppy", "bull"]),
+            suitable_regimes=frozenset(["choppy", "bull", "bear"]),  # v2: 加入 bear
         )
 
 
@@ -205,16 +227,23 @@ class BreakoutStrategy:
         confidence = 0.0
 
         price = close[-1]
-        if price > recent_high and vol_ratio > 1.3:
+        # v2: 在 bull/bear/choppy 都允许触发
+        if price > recent_high and vol_ratio > 1.2:  # v2: 阈值 1.3 → 1.2
             direction = "long"
-            reasons.append(f"突破 {lookback} 日高点 ({price:.2f} > {recent_high:.2f})")
+            reasons.append(f"突破 {lookback} 周期高点 ({price:.2f} > {recent_high:.2f})")
             reasons.append(f"成交量放大 ({vol_ratio:.1f}x 均量)")
             confidence = 0.75
-        elif price < recent_low and vol_ratio > 1.3:
+            if regime == "choppy":
+                reasons.append("震荡区间突破，趋势可能启动")
+                confidence = 0.80
+        elif price < recent_low and vol_ratio > 1.2:
             direction = "short"
-            reasons.append(f"跌破 {lookback} 日低点 ({price:.2f} < {recent_low:.2f})")
+            reasons.append(f"跌破 {lookback} 周期低点 ({price:.2f} < {recent_low:.2f})")
             reasons.append(f"成交量放大 ({vol_ratio:.1f}x 均量)")
             confidence = 0.75
+            if regime == "choppy":
+                reasons.append("震荡区间破位，可能加速下行")
+                confidence = 0.80
 
         return StrategyResult(
             strategy=self.ID,
@@ -223,7 +252,7 @@ class BreakoutStrategy:
             direction=direction,
             confidence=max(0, min(1, confidence)),
             reasons=tuple(reasons),
-            suitable_regimes=frozenset(["bull", "choppy"]),
+            suitable_regimes=frozenset(["bull", "bear", "choppy"]),  # v2: 加入 bear
         )
 
 
@@ -341,45 +370,64 @@ class VolumeProfileStrategy:
 
 
 class MultiTimeframeStrategy:
-    """多周期共振：日线 + 4H + 1H 趋势一致时最强信号"""
+    """多周期均线共振 — v2: 自适应 EMA 周期，超短线也能触发。"""
     ID = StrategyId.MULTI_TF
 
     def evaluate(self, candles: dict, volumes: np.ndarray, regime: str) -> StrategyResult:
         close = np.array(candles["close"], dtype=np.float64)
-        ema_9 = ema(close, 9)
-        ema_21 = ema(close, 21)
-        ema_50 = ema(close, 50)
+        tf = candles.get("timeframe", "1h")
+
+        # v2: 根据 timeframe 选 EMA 周期（超短线用更短周期）
+        if tf in ("1m", "5m"):
+            ema_fast_p, ema_mid_p, ema_slow_p = 5, 10, 20
+        elif tf == "15m":
+            ema_fast_p, ema_mid_p, ema_slow_p = 7, 14, 28
+        elif tf in ("1h", "4h"):
+            ema_fast_p, ema_mid_p, ema_slow_p = 9, 21, 50
+        else:  # 1d
+            ema_fast_p, ema_mid_p, ema_slow_p = 12, 26, 50
+
+        ema_fast = ema(close, ema_fast_p)
+        ema_mid = ema(close, ema_mid_p)
+        ema_slow = ema(close, ema_slow_p)
         rsi_val = rsi(close, 14)[-1]
 
         reasons = []
         direction = None
         confidence = 0.0
 
-        # 趋势一致：ema9 > ema21 > ema50 → 多头
-        aligned_long = ema_9[-1] > ema_21[-1] > ema_50[-1]
-        aligned_short = ema_9[-1] < ema_21[-1] < ema_50[-1]
+        # 趋势一致：fast > mid > slow → 多头
+        aligned_long = ema_fast[-1] > ema_mid[-1] > ema_slow[-1]
+        aligned_short = ema_fast[-1] < ema_mid[-1] < ema_slow[-1]
 
-        if aligned_long and regime in ("bull", "choppy"):
+        # v2: 允许所有 regime
+        if aligned_long:
             direction = "long"
-            reasons.append("多周期均线多头排列 (9>21>50)")
+            reasons.append(f"多周期均线多头排列 ({ema_fast_p}>{ema_mid_p}>{ema_slow_p})")
             confidence = 0.85
-            if rsi_val < 60:
+            if rsi_val < 70:
                 reasons.append(f"RSI({14})={rsi_val:.0f} 仍有空间")
-        elif aligned_short and regime in ("bear", "choppy"):
+            if regime == "choppy":
+                reasons.append("震荡中维持多头排列，强信号")
+                confidence = 0.88
+        elif aligned_short:
             direction = "short"
-            reasons.append("多周期均线空头排列 (9<21<50)")
+            reasons.append(f"多周期均线空头排列 ({ema_fast_p}<{ema_mid_p}<{ema_slow_p})")
             confidence = 0.80
-            if rsi_val > 40:
+            if rsi_val > 30:
                 reasons.append(f"RSI({14})={rsi_val:.0f} 仍有空间")
+            if regime == "choppy":
+                reasons.append("震荡中维持空头排列，强信号")
+                confidence = 0.85
 
         return StrategyResult(
             strategy=self.ID,
             pair=candles.get("symbol", "UNKNOWN"),
-            timeframe=candles.get("timeframe", "1h"),
+            timeframe=tf,
             direction=direction,
             confidence=max(0, min(1, confidence)),
             reasons=tuple(reasons),
-            suitable_regimes=frozenset(["bull", "bear", "choppy"]),
+            suitable_regimes=frozenset(["bull", "bear", "choppy", "crisis"]),  # v2: 加入 crisis
         )
 
 

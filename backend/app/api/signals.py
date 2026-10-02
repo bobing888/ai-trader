@@ -40,6 +40,12 @@ def _build_signal_response(sig, regime_info: dict | None) -> dict:
             "regime": sig.regime,
             "regime_confidence": sig.regime_confidence,
             "generated_at": datetime.now(timezone.utc).isoformat(),
+            # v2 新增字段
+            "timeframe": sig.timeframe,
+            "timeframe_category": sig.timeframe_category,
+            "suggested_leverage": sig.suggested_leverage,
+            "min_agreement_used": sig.min_agreement_used,
+            "fast_path": sig.fast_path,
         },
         "regime": regime_info,
     }
@@ -78,15 +84,22 @@ async def get_recommendation(
 
     closes = np.array([c["close"] for c in candle_dicts], dtype=np.float64)
     volumes = np.array([c["volume"] for c in candle_dicts], dtype=np.float64)
+    highs = np.array([c["high"] for c in candle_dicts], dtype=np.float64)
+    lows = np.array([c["low"] for c in candle_dicts], dtype=np.float64)
 
-    detector = RegimeDetector()
+    # v2: 传入 timeframe 以便 regime 阈值自适应 + 传入 high/low/close 计算 ADX/Hurst
+    detector = RegimeDetector(timeframe=timeframe)
     log_returns = np.diff(np.log(closes + 1e-10), prepend=closes[0])
-    regime_info_obj = detector.update(log_returns, volumes)
+    regime_info_obj = detector.update(log_returns, volumes, high=highs, low=lows, close=closes)
     regime_info = {
         "regime": regime_info_obj.regime.value,
         "confidence": round(regime_info_obj.confidence, 3),
         "regime_probs": {k.value: round(v, 3) for k, v in regime_info_obj.regime_probs.items()},
         "description": regime_info_obj.description,
+        # v2 新增
+        "adx": regime_info_obj.adx,
+        "hurst": regime_info_obj.hurst,
+        "trend_strength_label": regime_info_obj.trend_strength_label,
     }
 
     candles_dict = {
@@ -94,16 +107,22 @@ async def get_recommendation(
         "timeframe": timeframe,
         "close": closes,
         "open": np.array([c["open"] for c in candle_dicts], dtype=np.float64),
-        "high": np.array([c["high"] for c in candle_dicts], dtype=np.float64),
-        "low": np.array([c["low"] for c in candle_dicts], dtype=np.float64),
+        "high": highs,
+        "low": lows,
     }
     strategy_results: list[StrategyResult] = []
     for sid, strategy in STRATEGY_INSTANCES.items():
         result = strategy.evaluate(candles_dict, volumes, regime_info_obj.regime.value)
         strategy_results.append(result)
 
-    aggregator = SignalAggregator(min_agreement=2)
-    sig = aggregator.aggregate(strategy_results, regime_info_obj.regime, regime_info_obj.confidence)
+    # v2: 传入 timeframe
+    aggregator = SignalAggregator()
+    sig = aggregator.aggregate(
+        strategy_results,
+        regime_info_obj.regime,
+        regime_info_obj.confidence,
+        timeframe=timeframe,
+    )
 
     return _build_signal_response(sig, regime_info)
 
