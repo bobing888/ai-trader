@@ -282,7 +282,11 @@ async def _default_price_source(pair: str) -> float | None:
         from app.data.okx import okx_client
 
         ticker = await okx_client.get_ticker(pair)
-        return float(ticker.get("last", 0)) if ticker else None
+        if not ticker:
+            return None
+        # OKX ticker: "price" 是 last 价 (实测 production ticker={"price": 85777.5}); 旧 fallback "last" 已无效
+        last = ticker.get("price", ticker.get("last", 0))
+        return float(last) if last else None
     except Exception as exc:
         logger.debug("[scheduler] price fetch failed for %s: %s", pair, exc)
         return None

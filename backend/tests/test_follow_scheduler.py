@@ -13,6 +13,8 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.services.follow_scheduler import ExitVerdict, FollowScheduler
 
 
@@ -148,3 +150,43 @@ def test_signal_reversal_returns_false_when_current_none():
     verdict = FollowScheduler._evaluate_signal_reversal(follow, None, None, [])
     assert verdict.should_exit is False
     assert verdict.reason is None
+
+
+# === Step 3-C: _default_price_source 处理 OKX ticker 真实形状 ===
+
+
+@pytest.mark.asyncio
+async def test_default_price_source_reads_price_key():
+    """OKX ticker 真实形状: {\"price\": 85777.5, \"change_24h\": ...}, 不是 {\"last\": ...}"""
+    from app.data import okx
+    from app.services import follow_scheduler as fs
+
+    async def fake_get_ticker(pair):
+        return {"price": 85777.5, "change_24h": 2.67}
+
+    # monkeypatch okx_client.get_ticker
+    original = okx.okx_client.get_ticker
+    okx.okx_client.get_ticker = fake_get_ticker
+    try:
+        price = await fs._default_price_source("BTC-USDT")
+    finally:
+        okx.okx_client.get_ticker = original
+    assert price == 85777.5
+
+
+@pytest.mark.asyncio
+async def test_default_price_source_handles_empty_ticker():
+    """空 ticker (network down) → 返回 None, scheduler skip."""
+    from app.data import okx
+    from app.services import follow_scheduler as fs
+
+    async def fake_get_ticker(pair):
+        return None
+
+    original = okx.okx_client.get_ticker
+    okx.okx_client.get_ticker = fake_get_ticker
+    try:
+        price = await fs._default_price_source("BTC-USDT")
+    finally:
+        okx.okx_client.get_ticker = original
+    assert price is None
