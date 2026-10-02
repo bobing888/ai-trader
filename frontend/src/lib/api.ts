@@ -289,6 +289,76 @@ export async function importStrategy(payload: Record<string, unknown>): Promise<
   return data;
 }
 
+// ─── UserFollows (B-Follow Step 2) ──────────────────────────────────────────
+
+export interface UserFollow {
+  id: number;
+  recommendation_id: number | null;
+  pair: string;
+  timeframe: string;
+  direction: string;
+  entry_price: number | null;
+  stop_loss: number | null;
+  target: number | null;
+  leverage: number;
+  status: "open" | "closed" | "cancelled";
+  pnl_pct: number | null;
+  pnl_abs: number | null;
+  stake_amount: number;
+  entry_time: string;
+  exit_time: string | null;
+  exit_price: number | null;
+  exit_reason: string | null;
+  source: string;
+  notes: string | null;
+}
+
+export interface UserFollowListResponse {
+  items: UserFollow[];
+  total: number;
+}
+
+export async function fetchFollows(params?: {
+  status?: "open" | "closed" | "cancelled" | "all";
+  pair?: string;
+  limit?: number;
+}): Promise<UserFollowListResponse> {
+  const { data } = await apiClient.get<UserFollowListResponse>("/follows", { params });
+  return data;
+}
+
+export async function fetchFollow(id: number): Promise<UserFollow> {
+  const { data } = await apiClient.get<UserFollow>(`/follows/${id}`);
+  return data;
+}
+
+export async function createFollow(payload: {
+  pair: string;
+  timeframe: string;
+  direction: "long" | "short";
+  entry_price?: number | null;
+  stop_loss?: number | null;
+  target?: number | null;
+  leverage?: number;
+  stake_amount?: number | null;
+  source?: string;
+  recommendation_id?: number | null;
+  notes?: string | null;
+}): Promise<UserFollow> {
+  const { data } = await apiClient.post<UserFollow>("/follows", payload);
+  return data;
+}
+
+export async function closeFollow(id: number, payload: { exit_price: number; exit_reason?: string | null }): Promise<UserFollow> {
+  const { data } = await apiClient.post<UserFollow>(`/follows/${id}/close`, payload);
+  return data;
+}
+
+export async function cancelFollow(id: number, payload: { reason?: string | null } = {}): Promise<UserFollow> {
+  const { data } = await apiClient.post<UserFollow>(`/follows/${id}/cancel`, payload);
+  return data;
+}
+
 export interface SyncStatus {
   enabled: boolean;
   interval_hours: number;
