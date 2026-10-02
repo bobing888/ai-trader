@@ -199,6 +199,19 @@ class AggregatedSignal:
     # Phase 1 signal credibility
     calibrated_confidence: float | None = None   # 经 per-tf Isotonic 校准后的胜率（None = 冷启动）
     net_pnl_estimate: float = 0.0                 # 预期净 PnL（confidence * target - cost）
+    # D1: actionable execution levels (ATR-based)
+    entry_levels: list[dict] = field(default_factory=list)  # [{price, size_pct, label}]
+    stop_loss_price: float | None = None
+    take_profit_1_price: float | None = None
+    take_profit_2_price: float | None = None
+    atr: float | None = None
+    risk_reward_ratio: float = 0.0
+    # D2: signal quality gate
+    quality: str = "medium"  # "high" | "medium" | "low" | "reject"
+    quality_reasons: list[str] = field(default_factory=list)
+    # D3: trailing + partial TP
+    trailing_stop_enabled: bool = True
+    partial_tp_enabled: bool = True
 
 
 class SignalAggregator:
@@ -224,9 +237,14 @@ class SignalAggregator:
         regime: Regime,
         regime_confidence: float,
         timeframe: str = "1h",
+        candles_dict: dict[str, list[dict]] | None = None,
+        current_price: float | None = None,
     ) -> Optional[AggregatedSignal]:
         """
         聚合策略信号（v2）。
+
+        candles_dict: {pair: candles}  — 用于 ATR / D1 execution levels
+        current_price: 现价 dict（key=pair），None 时跳过 D1 计算
         """
         if not strategy_results:
             return None
@@ -357,6 +375,38 @@ class SignalAggregator:
         cost = estimate_round_trip_cost().total_round_trip_pct
         net_pnl = final_confidence * target_pct_for_estimate - cost
 
+        # D1: ATR-based executable levels (if candles + price available)
+        entry_levels: list[dict] = []
+        stop_loss_price: float | None = None
+        take_profit_1_price: float | None = None
+        take_profit_2_price: float | None = None
+        atr_value: float | None = None
+        rr: float = 0.0
+
+        candles_for_atr = (candles_dict or {}).get(pair)
+        price_for_atr = (current_price or {}).get(pair) if isinstance(current_price, dict) else current_price
+        if candles_for_atr and price_for_atr and price_for_atr > 0:
+            atr_value = self._compute_atr_value(candles_for_atr, period=14)
+            if atr_value:
+                lvls = self._compute_executable_levels(
+                    direction=best_direction,
+                    current_price=price_for_atr,
+                    atr=atr_value,
+                )
+                entry_levels = lvls["entry_levels"]
+                stop_loss_price = lvls["stop_loss_price"]
+                take_profit_1_price = lvls["take_profit_1_price"]
+                take_profit_2_price = lvls["take_profit_2_price"]
+                rr = lvls["risk_reward_ratio"]
+
+        # D2: signal quality gate
+        from app.signals.quality_gate import evaluate_signal_quality
+        quality_result = evaluate_signal_quality(
+            calibrated_confidence=calibrated,
+            net_pnl_estimate=net_pnl,
+            regime=regime.value,
+        )
+
         return AggregatedSignal(
             pair=pair,
             direction=best_direction,
@@ -374,6 +424,14 @@ class SignalAggregator:
             fast_path=fast_path,
             calibrated_confidence=calibrated,
             net_pnl_estimate=net_pnl,
+            entry_levels=entry_levels,
+            stop_loss_price=stop_loss_price,
+            take_profit_1_price=take_profit_1_price,
+            take_profit_2_price=take_profit_2_price,
+            atr=atr_value,
+            risk_reward_ratio=rr,
+            quality=quality_result["quality"],
+            quality_reasons=quality_result["reasons"],
         )
 
     def _compute_entry_zones(
@@ -452,3 +510,89 @@ class SignalAggregator:
             warnings.append("ℹ️ 单策略强信号触发，建议交叉验证其他指标")
 
         return warnings
+
+    # ─── D1: ATR-based executable levels ──────────────────────────────────────
+
+    def _compute_atr_value(
+        self,
+        candles: list[dict],
+        period: int = 14,
+    ) -> float | None:
+        """Wilder ATR(period) on OHLCV dicts. Returns None if 数据不足."""
+        if len(candles) < period + 1:
+            return None
+
+        # True Range
+        trs: list[float] = []
+        for i in range(1, len(candles)):
+            h = candles[i]["high"]
+            l = candles[i]["low"]
+            pc = candles[i - 1]["close"]
+            tr = max(h - l, abs(h - pc), abs(l - pc))
+            trs.append(tr)
+
+        if len(trs) < period:
+            return None
+
+        # Wilder smoothing
+        atr = sum(trs[:period]) / period
+        for tr in trs[period:]:
+            atr = (atr * (period - 1) + tr) / period
+        return atr
+
+    def _compute_executable_levels(
+        self,
+        direction: str,
+        current_price: float,
+        atr: float,
+    ) -> dict:
+        """3-tier entry + SL/TP based on ATR multiples.
+
+        Entry tier offsets: 0.0/0.5/1.0× ATR (long: below; short: above)
+        Sizes: 40% / 35% / 25% (decreasing as entry goes further)
+        SL: 1.5× ATR (long: -; short: +)
+        TP1: 1.0× ATR (50% exit)
+        TP2: 2.0× ATR (trailing target)
+        """
+        if atr <= 0 or current_price <= 0:
+            return {
+                "entry_levels": [],
+                "stop_loss_price": None,
+                "take_profit_1_price": None,
+                "take_profit_2_price": None,
+                "atr": atr,
+                "risk_reward_ratio": 0.0,
+            }
+
+        sign = 1 if direction == "long" else -1
+        offsets = [0.0, 0.5, 1.0]   # ATR multiples for entry
+        sizes = [0.40, 0.35, 0.25]
+
+        entry_levels = []
+        for off, sz in zip(offsets, sizes):
+            price = current_price - sign * off * atr   # long: below, short: above
+            entry_levels.append(
+                {
+                    "price": round(price, 6),
+                    "size_pct": sz,
+                    "label": f"T{offsets.index(off)+1}",
+                }
+            )
+
+        sl = current_price - sign * 1.5 * atr   # long: -, short: +
+        tp1 = current_price + sign * 1.0 * atr
+        tp2 = current_price + sign * 2.0 * atr
+
+        # Risk:Reward ratio (SL distance vs TP2 distance)
+        sl_dist = abs(current_price - sl)
+        tp2_dist = abs(tp2 - current_price)
+        rr = tp2_dist / sl_dist if sl_dist > 0 else 0.0
+
+        return {
+            "entry_levels": entry_levels,
+            "stop_loss_price": round(sl, 6),
+            "take_profit_1_price": round(tp1, 6),
+            "take_profit_2_price": round(tp2, 6),
+            "atr": round(atr, 6),
+            "risk_reward_ratio": round(rr, 2),
+        }

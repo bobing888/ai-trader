@@ -118,6 +118,17 @@ class UserFollow(Base):
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # ── D3: live trailing stop + partial TP ──
+    trailing_stop_enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    partial_tp_enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    current_stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    take_profit_1_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    take_profit_2_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    entry_atr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    partial_tp_taken: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    remaining_size_pct: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    entry_price_ref: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,
         default=lambda: datetime.now(UTC),
