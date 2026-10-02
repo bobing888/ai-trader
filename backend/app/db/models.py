@@ -144,6 +144,23 @@ class RecommendationOutcome(StrEnum):
     ERROR = "error"
 
 
+class OutcomeLabel(StrEnum):
+    """单笔持仓的实际出场结果（Phase 1 signal credibility）。
+
+    PENDING  = 持仓中（outcome_worker 尚未评估）
+    HIT_TP   = 触达止盈位
+    HIT_SL   = 触达止损位
+    EXPIRED  = 超过 max_hold_minutes 强制出场
+    HOLD     = 到评估时间仍未触发任何条件
+    """
+
+    PENDING = "pending"
+    HIT_TP = "hit_tp"
+    HIT_SL = "hit_sl"
+    EXPIRED = "expired"
+    HOLD = "hold"
+
+
 class RecommendationHistory(Base):
     """每分钟持久化的推荐决议快照（B-Follow Step 2 spec §3.1）。
 
@@ -155,6 +172,8 @@ class RecommendationHistory(Base):
     __table_args__ = (
         Index("idx_reco_history_pair_tf_time", "pair", "timeframe", "scanned_at"),
         Index("idx_reco_history_scanned_at", "scanned_at"),
+        # Phase 1: calibration training 需要按 timeframe + outcome 扫描
+        Index("idx_reco_history_tf_outcome", "timeframe", "outcome_label"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -185,3 +204,100 @@ class RecommendationHistory(Base):
 
     # 数据源 — 记录实际 OKX REST 调用的 source（recorder 复用 okx_ws）
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="okx")
+
+    # ── Phase 1 signal credibility（outcome_worker 写入）──
+    # 校准后的 confidence (0~1); NULL = calibrator 尚未训练 / 样本不足
+    calibrated_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 成本感知后的预期净 PnL（bps）：confidence * target_pct - round_trip_cost
+    net_pnl_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 持仓分钟数（outcome_worker 写入）
+    holding_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 出场 label（PENDING/HIT_TP/HIT_SL/EXPIRED/HOLD）
+    outcome_label: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # 实际净 PnL（扣 fee + slippage 后）；NULL 表示未出场
+    pnl_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 实际出场时间
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BacktestRun(Base):
+    """Walk-forward 回测运行记录（Phase 1 signal credibility）。
+
+    每次 POST /api/backtest 写入一行；run.status 用于同 symbol 串行化（409 防护）。
+    """
+
+    __tablename__ = "backtest_runs"
+    __table_args__ = (
+        Index("idx_backtest_runs_symbol_status", "symbol", "status"),
+        Index("idx_backtest_runs_started_at", "started_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # 输入
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    timeframe: Mapped[str] = mapped_column(String(10), nullable=False)
+    strategies: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    fee_taker_bps: Mapped[float] = mapped_column(Float, nullable=False, default=8.0)
+    slippage_bps: Mapped[float] = mapped_column(Float, nullable=False, default=5.0)
+    min_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.6)
+    target_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.005)
+    stop_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.003)
+    max_hold_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+
+    # 时序
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # 摘要
+    total_trades: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    hit_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    net_pnl_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    sharpe_ratio: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    max_drawdown_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+    # 净值曲线（List[Dict] = [{ts, equity}, ...]）
+    equity_curve: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+    # 状态机
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")  # running|done|error
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class BacktestTrade(Base):
+    """单次回测内的每笔虚拟成交（Phase 1 signal credibility）。
+
+    run_id 关联到 BacktestRun。
+    """
+
+    __tablename__ = "backtest_trades"
+    __table_args__ = (
+        Index("idx_backtest_trades_run_id", "run_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)  # FK logical to BacktestRun.id
+
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    timeframe: Mapped[str] = mapped_column(String(10), nullable=False)
+    strategy_name: Mapped[str] = mapped_column(String(60), nullable=False)
+
+    entry_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    entry_price: Mapped[float] = mapped_column(Float, nullable=False)
+    exit_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    exit_price: Mapped[float] = mapped_column(Float, nullable=False)
+
+    raw_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    calibrated_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    target_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    stop_pct: Mapped[float] = mapped_column(Float, nullable=False)
+
+    gross_pnl_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    fee_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    slippage_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    net_pnl_pct: Mapped[float] = mapped_column(Float, nullable=False)
+
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)  # HIT_TP/HIT_SL/EXPIRED/HOLD
+    holding_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
