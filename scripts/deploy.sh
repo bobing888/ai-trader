@@ -1,6 +1,6 @@
 #!/bin/bash
 # ──────────────────────────────────────────────────────────────────────────
-# ai-trader 一键部署脚本 (ssh dyddd-prod)
+# ai-trader 一键部署脚本 (default kbkkk-prod, override with SSH_TARGET)
 # 用法:
 #   bash scripts/deploy.sh                # 默认 deploy (rebuild + up)
 #   bash scripts/deploy.sh --restart      # 只 restart backend/frontend
@@ -8,12 +8,13 @@
 #   bash scripts/deploy.sh --health       # 只做健康检查
 #   bash scripts/deploy.sh --frontend     # 只 rebuild + up 前端
 #
-# SSH 别名: dyddd-prod (需要 ~/.ssh/config 配好)
+# SSH 别名: kbkkk-prod (默认 PRIMARY, 走 sshpass 密码)
+# 备选: SSH_TARGET=dyddd-prod (legacy 灰度) (需要 ~/.ssh/config 配好)
 # 部署路径: /opt/ai-trader/ai-trader/
 # ──────────────────────────────────────────────────────────────────────────
 set -e
 
-SSH_TARGET="${SSH_TARGET:-dyddd-prod}"
+SSH_TARGET="${SSH_TARGET:-kbkkk-prod}"
 REMOTE_DIR="/opt/ai-trader/ai-trader"
 LOCAL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE="${PROFILE:-default}"
