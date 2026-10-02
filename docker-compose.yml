@@ -49,11 +49,10 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-    volumes:
-      - /etc/nginx/ssl:/etc/nginx/ssl:ro
-    ports:
-      - "80:80"
-      - "443:443"
+    # ports / volumes 拆到 override：
+    #   - docker-compose.kbkkk.yml  (HTTP only, 无 SSL, 127.0.0.1 bind)
+    #   - docker-compose.dyddd.yml  (HTTPS 80/443 + /etc/nginx/ssl 挂载)
+    # 主 compose 不暴露端口、不挂 ssl，避免双 override 叠加 ADDITIVE
 
 volumes:
   redis-data:

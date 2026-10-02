@@ -1,0 +1,27 @@
+# dyddd-prod 专用 override — 仅在 dyddd 部署时使用
+# 用法: docker compose -f docker-compose.yml -f docker-compose.dyddd.yml ...
+#
+# 主 compose 已把 frontend ports/volumes 拆出来（本 override 各自提供），
+# 不再有临时 sed 打补丁逻辑；重 deploy / rsync 幂等。
+# 本 override 负责:
+#   1. frontend ports: 80/443 (dyddd 用 nginx + Let's Encrypt 直终结 TLS)
+#   2. frontend 挂 /etc/nginx/ssl 读取证书
+#   3. frontend build args.NGINX_CONF=nginx.conf (默认, 启用 HTTPS 重定向)
+#   4. CORS: 主 compose 默认列表 + dyddd.com (kbkkk 域名在 dyddd 上不需要)
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      network: host
+      args:
+        NGINX_CONF: nginx.conf
+    volumes:
+      - /etc/nginx/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "80:80"
+      - "443:443"
+
+  backend:
+    environment:
+      AI_TRADER_CORS_ORIGINS_RAW: "http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80,http://156.225.31.18,http://dyddd.com,http://www.dyddd.com,https://dyddd.com,https://www.dyddd.com"

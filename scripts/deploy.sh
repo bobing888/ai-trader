@@ -19,6 +19,13 @@ REMOTE_DIR="/opt/ai-trader/ai-trader"
 LOCAL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PROFILE="${PROFILE:-default}"
 
+# 按 SSH_TARGET 自动选 override 文件（kbkkk-prod → docker-compose.kbkkk.yml）
+# dyddd-prod / 其它 → docker-compose.dyddd.yml（兼容老行为 80/443 + ssl）
+case "$SSH_TARGET" in
+  kbkkk-prod) COMPOSE_FILES="-f docker-compose.yml -f docker-compose.kbkkk.yml" ;;
+  *)          COMPOSE_FILES="-f docker-compose.yml -f docker-compose.dyddd.yml" ;;
+esac
+
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
@@ -53,13 +60,13 @@ case "$ACTION" in
     ;;
   --restart)
     log "重启 backend + frontend..."
-    ssh "$SSH_TARGET" "cd ${REMOTE_DIR} && docker compose restart backend frontend"
+    ssh "$SSH_TARGET" "cd ${REMOTE_DIR} && docker compose ${COMPOSE_FILES} restart backend frontend"
     ssh "$SSH_TARGET" "sleep 5 && cd ${REMOTE_DIR} && docker ps --format 'table {{.Names}}\t{{.Status}}'"
     exit 0
     ;;
   --frontend)
     log "只 rebuild + up 前端..."
-    ssh "$SSH_TARGET" "cd ${REMOTE_DIR} && docker compose build --no-cache frontend && docker compose up -d --force-recreate --no-deps frontend"
+    ssh "$SSH_TARGET" "cd ${REMOTE_DIR} && docker compose ${COMPOSE_FILES} build --no-cache frontend && docker compose ${COMPOSE_FILES} up -d --force-recreate --no-deps frontend"
     ssh "$SSH_TARGET" "sleep 5 && cd ${REMOTE_DIR} && docker ps --format 'table {{.Names}}\t{{.Status}}'"
     ok "前端 deploy 完成"
     exit 0
@@ -95,11 +102,11 @@ rsync -avz --delete \
 ok "rsync 完成"
 
 log "Step 3/5: 服务器侧 docker compose build..."
-ssh "$SSH_TARGET" "cd ${REMOTE_DIR} && docker compose build --no-cache backend frontend"
+ssh "$SSH_TARGET" "cd ${REMOTE_DIR} && docker compose ${COMPOSE_FILES} build --no-cache backend frontend"
 ok "build 完成"
 
 log "Step 4/5: docker compose up -d..."
-ssh "$SSH_TARGET" "cd ${REMOTE_DIR} && docker compose up -d --force-recreate --no-deps backend frontend"
+ssh "$SSH_TARGET" "cd ${REMOTE_DIR} && docker compose ${COMPOSE_FILES} up -d --force-recreate --no-deps backend frontend"
 ok "up 完成"
 
 log "Step 5/5: 健康检查 (max 60s)..."

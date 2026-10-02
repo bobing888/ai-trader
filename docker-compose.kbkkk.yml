@@ -1,13 +1,14 @@
 # kbkkk-prod 专用 override — 仅在 kbkkk 部署时使用
 # 用法: docker compose -f docker-compose.yml -f docker-compose.kbkkk.yml ...
 #
-# 注意: compose 的 ports/volumes 是 ADDITIVE merge (不能 replace)
-# 所以 ports/volumes 的差异必须在主 compose 上 sed 处理 (deploy-kbkkk.sh Step 4b)
+# 主 compose 已把 frontend ports/volumes 拆出来（本 override 各自提供），
+# 不再有 "Step 4b sed" 那种临时打补丁逻辑；重 deploy / rsync 幂等。
 # 本 override 负责:
-#   1. frontend build args.NGINX_CONF=nginx-kbkkk.conf (纯 HTTP, 无 HTTPS 重定向)
-#   2. backend env: DATA_SOURCE=okx (kbkkk 香港 IP 被 Binance 限流, 切到 OKX 公开 API)
-#   3. CORS 加 kbkkk 域名 (kbkkk.com / www.kbkkk.com / IP)
-#   4. frontend ports/volumes 在 deploy-kbkkk.sh Step 4b 同步 sed 主 compose
+#   1. frontend ports: 127.0.0.1:8123->80 (纯 HTTP, loopback only, 由外部 caddy 转发)
+#   2. frontend 不挂 /etc/nginx/ssl (kbkkk 用 caddy 在 host 上终结 TLS)
+#   3. frontend build args.NGINX_CONF=nginx-kbkkk.conf (纯 HTTP, 无 HTTPS 重定向)
+#   4. backend env: DATA_SOURCE=okx (kbkkk 香港 IP 被 Binance 限流, 切到 OKX 公开 API)
+#   5. CORS 加 kbkkk 域名 (kbkkk.com / www.kbkkk.com / IP)
 services:
   frontend:
     build:
@@ -16,6 +17,8 @@ services:
       network: host
       args:
         NGINX_CONF: nginx-kbkkk.conf
+    ports:
+      - "127.0.0.1:8123:80"
 
   backend:
     environment:
