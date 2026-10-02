@@ -21,10 +21,12 @@ from app.api.ws import router as ws_router
 from app.config import settings
 from app.data import binance_client, get_client, okx_client  # noqa: F401
 from app.data.okx_ws import okx_ws_client
-from app.db.session import init_db
+from app.db.session import SessionLocal, init_db
 from app.services import github_sync as gh
+from app.services.follow_scheduler import FollowScheduler, set_follow_scheduler
 from app.services.notification_service import NotificationService
 from app.services.regime_shift_engine import RegimeShiftEngine
+from app.services.signal_change_bus import SignalChangeBus, set_signal_bus
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,32 @@ async def lifespan(app: FastAPI):
     set_notification_service(notification_service)
     app.state.notification_service = notification_service
 
+    # === B-Follow Step 2: signal bus + follow scheduler + recorder (spec §2) ===
+    signal_bus = SignalChangeBus()
+    set_signal_bus(signal_bus)
+
+    # Recorder (T8 implements RecommendationRecorder; lazy import to avoid circular)
+    from app.services.recommendation_recorder import (
+        RecommendationRecorder,
+        set_recorder,
+    )
+
+    recorder = RecommendationRecorder(
+        ws_client=okx_ws_client,
+        bus=signal_bus,
+        session_factory=SessionLocal,
+    )
+    set_recorder(recorder)
+    await recorder.start()
+
+    # Follow scheduler
+    follow_scheduler = FollowScheduler(
+        bus=signal_bus,
+        session_factory=SessionLocal,
+    )
+    set_follow_scheduler(follow_scheduler)
+    await follow_scheduler.start()
+
     # 启动 GitHub sync 后台循环
     sync_task = None
     if settings.github_sync_enabled:
@@ -59,6 +87,9 @@ async def lifespan(app: FastAPI):
             sync_task.cancel()
             with __import__("contextlib").suppress(asyncio.CancelledError, Exception):
                 await sync_task
+        # === B-Follow Step 2 清理 ===
+        await follow_scheduler.stop()
+        await recorder.stop()
         await regime_engine.stop()
         await binance_client.close()
         await okx_client.close()
