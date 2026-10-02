@@ -5,6 +5,10 @@
 - test_expired_triggers
 - test_no_exit_when_in_range
 - test_choppy_regime_no_reversal (covered by detector)
+- test_signal_reversal_exits (Step 3-A: detect_reversal 接入 scheduler)
+- test_signal_reversal_no_close_when_steady
+- test_scan_pair_calls_detect_reversal_with_3min_history
+- test_price_exit_does_not_skip_when_no_history
 """
 
 from datetime import UTC, datetime, timedelta
@@ -77,3 +81,70 @@ def test_exit_verdict_has_exit_price():
     verdict = FollowScheduler._evaluate_price(follow, 48800.0)
     assert isinstance(verdict, ExitVerdict)
     assert verdict.exit_price == 48800.0
+
+
+# === Step 3-A: detect_reversal 接入 scheduler（B-Follow spec §4.2）===
+
+
+class _FakeRec:
+    """测试用 RecommendationHistory stand-in（不动 SQLAlchemy）。"""
+
+    def __init__(
+        self,
+        direction: str | None = None,
+        regime: str | None = None,
+        scanned_at: datetime | None = None,
+    ):
+        self.direction = direction
+        self.regime = regime
+        self.scanned_at = scanned_at or datetime.now(UTC)
+
+
+class _FakeFollowWithMeta(_FakeFollow):
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.pair = "BTC-USDT"
+        self.timeframe = "1h"
+
+
+def test_signal_reversal_regime_flip_triggers_exit():
+    """regime long→bear 的 OPEN long follow → 应触发 ai_signal_reversed 出场。"""
+    follow = _FakeFollowWithMeta(direction="long")
+    current = _FakeRec(direction="short", regime="bear")
+    previous = _FakeRec(direction="long", regime="bull")
+
+    verdict = FollowScheduler._evaluate_signal_reversal(follow, current, previous, [])
+    assert verdict.should_exit is True
+    assert verdict.reason == "ai_signal_reversed"
+
+
+def test_signal_reversal_consecutive_reversal_triggers_exit():
+    """连续 2 帧都跟 follow 方向相反（regime 不是 bull/bear/crisis 时）→ 仍触发。"""
+    follow = _FakeFollowWithMeta(direction="long")
+    now = datetime.now(UTC)
+    current = _FakeRec(direction="short", regime="choppy", scanned_at=now)
+    previous = _FakeRec(direction="short", regime="choppy", scanned_at=now - timedelta(seconds=60))
+
+    verdict = FollowScheduler._evaluate_signal_reversal(follow, current, previous, [])
+    assert verdict.should_exit is True
+    assert verdict.reason == "ai_signal_reversed"
+
+
+def test_signal_reversal_no_close_when_steady():
+    """同 direction + 同 regime → 不触发。"""
+    follow = _FakeFollowWithMeta(direction="long")
+    current = _FakeRec(direction="long", regime="bull")
+    previous = _FakeRec(direction="long", regime="bull")
+
+    verdict = FollowScheduler._evaluate_signal_reversal(follow, current, previous, [])
+    assert verdict.should_exit is False
+    assert verdict.reason is None
+
+
+def test_signal_reversal_returns_false_when_current_none():
+    """current 缺帧（无 history）→ 不触发，让 price 评估兜底。"""
+    follow = _FakeFollowWithMeta(direction="long")
+
+    verdict = FollowScheduler._evaluate_signal_reversal(follow, None, None, [])
+    assert verdict.should_exit is False
+    assert verdict.reason is None

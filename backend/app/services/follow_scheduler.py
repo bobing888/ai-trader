@@ -4,6 +4,9 @@
 - bus 事件立刻响应 — direction/regime 变化立刻评估该 pair 的 OPEN follow
 - 60s tick 兜底 — 处理 expired / 价格拉取失败重试 / 检测漏掉的反转
 - 价格来源 — 用 okx_ws_client 拉最新价（fallback: tick 时 REST 拉 ticker）
+
+Step 3-A: detect_reversal 接入 — 对每个 OPEN follow 也评估「信号反转」,
+         命中 → close with reason=ai_signal_reversed（spec §4.2 + §6.2 #5）
 """
 
 from __future__ import annotations
@@ -11,16 +14,16 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
 from app.config import settings
 from app.services.follow_service import FollowService
 from app.services.signal_change_bus import SignalChangeBus
+from app.services.signal_change_detector import detect_reversal
 
 if TYPE_CHECKING:
-
-    from app.db.models import UserFollow
+    from app.db.models import RecommendationHistory, UserFollow
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +79,55 @@ class FollowScheduler:
         if elapsed_hours >= settings.follow_max_hours:
             return ExitVerdict(True, "expired", current_price)
         return ExitVerdict(False, None, current_price)
+
+    # === 信号反转出场（同步 — 方便单测） ===
+
+    @staticmethod
+    def _evaluate_signal_reversal(
+        follow: UserFollow,
+        current: RecommendationHistory | None,
+        previous: RecommendationHistory | None,
+        lookback_history: list[RecommendationHistory],
+    ) -> ExitVerdict:
+        """Step 3-A: 把 detect_reversal 的判定包装成 ExitVerdict。
+
+        - current=None → 不触发（让 price 评估兜底，DB 没数据别误关）
+        - reversed=True → ai_signal_reversed（exit_price=None，由调度器下一步 fetch）
+        - reversed=False → 不出场
+        """
+        if current is None:
+            return ExitVerdict(False, None, None)
+        verdict = detect_reversal(follow, current, previous, lookback_history)
+        if verdict.reversed:
+            return ExitVerdict(True, "ai_signal_reversed", None)
+        return ExitVerdict(False, None, None)
+
+    @staticmethod
+    def _load_pair_recent_recos(
+        db, pair: str, timeframe: str, window_seconds: int = 180
+    ) -> tuple[RecommendationHistory | None, RecommendationHistory | None, list[RecommendationHistory]]:
+        """从 DB 加载 pair 当前帧 + 上一帧 + 3 分钟窗口（spec §4.2）。
+
+        返回: (current, previous, lookback_history)
+        - 缺 history 时 current=None（让 price 兜底评估）
+        - lookback_history 保留供未来扩展（variance / agreement 变化等）
+        """
+        from app.db.models import RecommendationHistory  # noqa: N817
+
+        recent = (
+            db.query(RecommendationHistory)
+            .filter(RecommendationHistory.pair == pair, RecommendationHistory.timeframe == timeframe)
+            .order_by(RecommendationHistory.scanned_at.desc())
+            .limit(20)
+            .all()
+        )
+        if not recent:
+            return None, None, []
+        current = recent[0]
+        previous = recent[1] if len(recent) > 1 else None
+        window_start = current.scanned_at - timedelta(seconds=window_seconds)
+        lookback = [r for r in recent if r.scanned_at >= window_start]
+        return current, previous, lookback
 
     # === 启动 / 停止 ===
 
@@ -145,7 +197,11 @@ class FollowScheduler:
                 logger.warning("[scheduler] scan_pair %s failed: %s", pair, exc)
 
     async def _scan_pair(self, pair: str) -> None:
-        """评估某 pair 的所有 OPEN follow。"""
+        """评估某 pair 的所有 OPEN follow。
+
+        Step 3-A: 先评估「信号反转」（close with reason=ai_signal_reversed），
+                  再评估价格出场（SL/TP/expired）。信号反转优先 — 防止错失反转退出。
+        """
         db = self._session_factory()
         try:
             from app.db.models import UserFollow
@@ -163,7 +219,19 @@ class FollowScheduler:
                 logger.debug("[scheduler] price unavailable for %s, skip", pair)
                 return
 
+            # 一次性加载 recent recos（避免循环里 N 次查询）
+            # 用任一 follow 的 timeframe（同一 pair 多 timeframe 的场景 v2 再说）
+            timeframe = follows[0].timeframe
+            current, previous, lookback = self._load_pair_recent_recos(db, pair, timeframe)
+
             for follow in follows:
+                # Step 3-A: 信号反转优先
+                rev_verdict = self._evaluate_signal_reversal(follow, current, previous, lookback)
+                if rev_verdict.should_exit:
+                    # exit_price 用当前市场价
+                    self._close_sync(follow.id, ExitVerdict(True, "ai_signal_reversed", price))
+                    continue
+                # 价格出场
                 verdict = self._evaluate_price(follow, price)
                 if not verdict.should_exit:
                     continue
