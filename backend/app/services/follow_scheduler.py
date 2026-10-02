@@ -7,6 +7,7 @@
 
 Step 3-A: detect_reversal 接入 — 对每个 OPEN follow 也评估「信号反转」,
          命中 → close with reason=ai_signal_reversed（spec §4.2 + §6.2 #5）
+Step 3-B: 加 observability — 每次 scan_pair 出 INFO 日志，便于线上追踪。
 """
 
 from __future__ import annotations
@@ -201,8 +202,10 @@ class FollowScheduler:
 
         Step 3-A: 先评估「信号反转」（close with reason=ai_signal_reversed），
                   再评估价格出场（SL/TP/expired）。信号反转优先 — 防止错失反转退出。
+        Step 3-B: 加 INFO 日志：扫描数 + close 数 + close 原因分布。
         """
         db = self._session_factory()
+        closed_reasons: dict[str, int] = {}
         try:
             from app.db.models import UserFollow
 
@@ -212,17 +215,26 @@ class FollowScheduler:
                 .all()
             )
             if not follows:
+                logger.debug("[scheduler] %s: no open follows", pair)
                 return
 
             price = await self._price_source(pair)
             if price is None:
-                logger.debug("[scheduler] price unavailable for %s, skip", pair)
+                logger.warning("[scheduler] %s: price unavailable, skip", pair)
                 return
 
             # 一次性加载 recent recos（避免循环里 N 次查询）
             # 用任一 follow 的 timeframe（同一 pair 多 timeframe 的场景 v2 再说）
             timeframe = follows[0].timeframe
             current, previous, lookback = self._load_pair_recent_recos(db, pair, timeframe)
+            logger.info(
+                "[scheduler] %s tf=%s: scanned=%d price=%.2f has_recos=%s",
+                pair,
+                timeframe,
+                len(follows),
+                price,
+                current is not None,
+            )
 
             for follow in follows:
                 # Step 3-A: 信号反转优先
@@ -230,6 +242,7 @@ class FollowScheduler:
                 if rev_verdict.should_exit:
                     # exit_price 用当前市场价
                     self._close_sync(follow.id, ExitVerdict(True, "ai_signal_reversed", price))
+                    closed_reasons["ai_signal_reversed"] = closed_reasons.get("ai_signal_reversed", 0) + 1
                     continue
                 # 价格出场
                 verdict = self._evaluate_price(follow, price)
@@ -237,8 +250,17 @@ class FollowScheduler:
                     continue
                 # 拿独立 session 锁 + close（SELECT FOR UPDATE）
                 self._close_sync(follow.id, verdict)
+                if verdict.reason:
+                    closed_reasons[verdict.reason] = closed_reasons.get(verdict.reason, 0) + 1
         finally:
             db.close()
+
+        if closed_reasons:
+            logger.info(
+                "[scheduler] %s: closed=%s",
+                pair,
+                ", ".join(f"{k}={v}" for k, v in closed_reasons.items()),
+            )
 
     def _close_sync(self, follow_id: int, verdict: ExitVerdict) -> None:
         db = self._session_factory()
