@@ -103,6 +103,9 @@ class UserFollow(Base):
     pnl_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     pnl_abs: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # mock 跟单本金 USDT（默认 100.0；用户 2026-10-02 决定）
+    stake_amount: Mapped[float] = mapped_column(Float, nullable=False, default=100.0)
+
     entry_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     exit_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     exit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -124,3 +127,61 @@ class UserFollow(Base):
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )
+
+
+class RecommendationOutcome(StrEnum):
+    """每帧推荐决议的状态（B-Follow Step 2 spec §3.1）。
+
+    HAS_SIGNAL = signal 已产出且非空 → 正常业务路径
+    NO_SIGNAL  = 信号引擎正常但无共识 → 记录时序供回看
+    NO_DATA    = K 线不足 / recorder 启动初期 → 不误判、不 emit bus
+    ERROR      = aggregator 异常 → log + 跳过+ 排查用
+    """
+
+    HAS_SIGNAL = "has_signal"
+    NO_SIGNAL = "no_signal"
+    NO_DATA = "no_data"
+    ERROR = "error"
+
+
+class RecommendationHistory(Base):
+    """每分钟持久化的推荐决议快照（B-Follow Step 2 spec §3.1）。
+
+    recorder 写, recorder + scheduler 读 — 由 recorder 触发信号反转检测。
+    历史保留 7 天（cron 在 lifespan 24h 调度）。
+    """
+
+    __tablename__ = "recommendation_history"
+    __table_args__ = (
+        Index("idx_reco_history_pair_tf_time", "pair", "timeframe", "scanned_at"),
+        Index("idx_reco_history_scanned_at", "scanned_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    pair: Mapped[str] = mapped_column(String(20), nullable=False)
+    timeframe: Mapped[str] = mapped_column(String(10), nullable=False)
+
+    # 信号决议快照（None 表示该字段在该帧不适用 — 例如 NO_DATA 时全 NULL）
+    has_signal: Mapped[bool] = mapped_column(nullable=False)
+    direction: Mapped[str | None] = mapped_column(String(10), nullable=True)  # long|short|null
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    regime: Mapped[str | None] = mapped_column(String(20), nullable=True)  # bull|bear|choppy|crisis
+    regime_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    contributing_strategies: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    reasons: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    suggested_leverage: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    min_agreement_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fast_path: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)  # RecommendationOutcome
+
+    # 时序
+    scanned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+        default=lambda: datetime.now(UTC),
+    )
+
+    # 数据源 — 记录实际 OKX REST 调用的 source（recorder 复用 okx_ws）
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="okx")

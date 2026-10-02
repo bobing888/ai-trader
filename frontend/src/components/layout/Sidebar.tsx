@@ -110,6 +110,15 @@ export function Sidebar({ onClose, collapsed = false, onToggleCollapse }: Sideba
             >
               {t("nav.trades")}
             </SidebarNavItem>
+            <SidebarNavItem
+              to="/follows"
+              testId="nav-follows"
+              icon={Receipt}
+              badge="新"
+              collapsed={collapsed}
+            >
+              {t("nav.follows", "跟单")}
+            </SidebarNavItem>
             <SidebarNavItem to="/backtest" testId="nav-backtest" icon={History} collapsed={collapsed}>
               {t("nav.backtest")}
             </SidebarNavItem>

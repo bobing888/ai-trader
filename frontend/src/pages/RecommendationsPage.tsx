@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { FollowDialog } from "@/components/FollowDialog";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -693,7 +694,53 @@ function EnhancedSignalCard({ item, timeframe }: { item: BatchSignalItem; timefr
             })}
           </div>
         </div>
+        {/* Follow button */}
+        <FollowButton
+          pair={item.pair}
+          timeframe={timeframe}
+          direction={signal.direction}
+          leverage={signal.suggested_leverage ?? 1}
+        />
       </CardBody>
     </Card>
+  );
+}
+
+// ─── Follow Button (B-Follow Step 2) ─────────────────────────────────────────
+
+function FollowButton({
+  pair,
+  timeframe,
+  direction,
+  leverage,
+}: {
+  pair: string;
+  timeframe: string;
+  direction: "long" | "short";
+  leverage: number;
+}) {
+  const [open, setOpen] = useState(false);
+
+  // OKX 形态 (BTC-USDT) → binance 形态 (BTCUSDT) 转换 (recommendation 默认用 binance)
+  const okxPair = pair.endsWith("USDT") ? pair.replace(/USDT$/, "-USDT") : pair;
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        data-testid={`follow-btn-${pair}-${timeframe}`}
+        className="w-full py-2 mt-2 rounded bg-emerald-600 hover:bg-emerald-500 text-xs font-medium"
+      >
+        跟单 →
+      </button>
+      <FollowDialog
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        pair={okxPair}
+        timeframe={timeframe}
+        direction={direction}
+        recommendedLeverage={leverage}
+      />
+    </>
   );
 }

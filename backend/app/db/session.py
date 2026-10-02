@@ -30,7 +30,11 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expi
 def init_db() -> None:
     """启动时调用 — create_all + migrate（如有需要）"""
     from app.db import Base  # noqa: F401  触发 model 注册
-    from app.db.models import Strategy  # noqa: F401
+    from app.db.models import (
+        RecommendationHistory,  # noqa: F401
+        Strategy,  # noqa: F401
+        UserFollow,  # noqa: F401
+    )
 
     Base.metadata.create_all(bind=engine)
 
