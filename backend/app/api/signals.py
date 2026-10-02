@@ -46,6 +46,9 @@ def _build_signal_response(sig, regime_info: dict | None) -> dict:
             "suggested_leverage": sig.suggested_leverage,
             "min_agreement_used": sig.min_agreement_used,
             "fast_path": sig.fast_path,
+            # Phase 1 signal credibility
+            "calibrated_confidence": sig.calibrated_confidence,
+            "net_pnl_estimate": sig.net_pnl_estimate,
         },
         "regime": regime_info,
     }
