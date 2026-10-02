@@ -74,6 +74,7 @@ class FollowService:
             entry_atr=payload.get("entry_atr"),
             remaining_size_pct=payload.get("remaining_size_pct", 1.0),
             entry_price_ref=entry_price,
+            risk_reward_ratio=payload.get("risk_reward_ratio"),
         )
         db.add(follow)
         db.commit()

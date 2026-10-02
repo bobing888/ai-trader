@@ -128,6 +128,8 @@ class UserFollow(Base):
     partial_tp_taken: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     remaining_size_pct: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     entry_price_ref: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # D1: persisted from recommendation snapshot
+    risk_reward_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False,
@@ -229,6 +231,19 @@ class RecommendationHistory(Base):
     pnl_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     # 实际出场时间
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # ── D1: actionable execution levels (ATR-based) ──
+    entry_levels_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON [{price, size_pct, label}]
+    stop_loss_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    take_profit_1_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    take_profit_2_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    atr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    risk_reward_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+    current_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # ── D2: signal quality gate ──
+    quality: Mapped[str | None] = mapped_column(String(20), nullable=True)  # high|medium|low|reject
+    quality_reasons_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
 
 
 class BacktestRun(Base):

@@ -76,7 +76,13 @@ def close_follow(
     db: Annotated[Session, Depends(get_db)],
 ) -> UserFollow:
     try:
-        return FollowService.close(db, follow_id, payload.exit_price, payload.exit_reason or "manual")
+        return FollowService.close(
+            db,
+            follow_id,
+            payload.exit_price,
+            payload.exit_reason or "manual",
+            payload.exit_size_pct,
+        )
     except ValueError as exc:
         msg = str(exc)
         if "not found" in msg:

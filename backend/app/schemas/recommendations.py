@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 
 class RecommendationHistoryOut(BaseModel):
-    """一帧推荐决议快照。"""
+    """一帧推荐决议快照."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -25,6 +25,47 @@ class RecommendationHistoryOut(BaseModel):
     outcome: str
     scanned_at: datetime
     source: str
+    # Phase 1 signal credibility
+    calibrated_confidence: float | None = None
+    net_pnl_estimate: float | None = None
+    # D1 — actionable execution levels
+    entry_levels: list[dict] = []
+    stop_loss_price: float | None = None
+    take_profit_1_price: float | None = None
+    take_profit_2_price: float | None = None
+    atr: float | None = None
+    risk_reward_ratio: float | None = None
+    current_price: float | None = None
+    # D2 — quality gate
+    quality: str | None = None
+    quality_reasons: list[str] = []
+
+    @field_serializer("entry_levels", "quality_reasons")
+    def _serialize_list(self, value):
+        return value or []
+
+    @classmethod
+    def from_orm_with_json(cls, obj) -> "RecommendationHistoryOut":
+        """从 ORM 行 + JSON 文本字段构造."""
+        import json
+
+        data = {c.key: getattr(obj, c.key) for c in obj.__table__.columns}
+        # 解析 JSON 字段
+        if data.get("entry_levels_json"):
+            try:
+                data["entry_levels"] = json.loads(data["entry_levels_json"])
+            except Exception:
+                data["entry_levels"] = []
+        else:
+            data["entry_levels"] = []
+        if data.get("quality_reasons_json"):
+            try:
+                data["quality_reasons"] = json.loads(data["quality_reasons_json"])
+            except Exception:
+                data["quality_reasons"] = []
+        else:
+            data["quality_reasons"] = []
+        return cls(**data)
 
 
 class RecommendationHistoryList(BaseModel):

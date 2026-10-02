@@ -5,6 +5,7 @@
  *   1. the `useNotifications` polling hook
  *   2. the in-memory toast queue (capped at 3 visible toasts)
  *   3. a `useNotification` consumer hook
+ *   4. D5: `useSignalAudio` — WebSocket signal alerts → Web Audio + browser notification
  */
 
 import {
@@ -19,6 +20,12 @@ import {
 
 import { useNotifications, type Notification } from "@/lib/useNotifications";
 import { NotificationToaster } from "./NotificationToaster";
+import { useSignalStream, type SignalAlert } from "@/lib/useSignalStream";
+import {
+  playSignalAlert,
+  sendBrowserNotification,
+  formatSignalNotification,
+} from "@/lib/audio";
 
 // ── context value ─────────────────────────────────────────────────────────────
 
@@ -36,6 +43,37 @@ export function useNotificationContext(): NotificationContextValue {
   const ctx = useContext(NotificationContext);
   if (!ctx) throw new Error("useNotificationContext must be used inside <NotificationProvider>");
   return ctx;
+}
+
+// ── D5: signal audio hook ────────────────────────────────────────────────────
+
+function useSignalAudio(): void {
+  const cooldowns = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useSignalStream({
+    onAlert: (alert: SignalAlert) => {
+      // 30s cooldown per pair
+      if (cooldowns.current[alert.pair]) return;
+      cooldowns.current[alert.pair] = setTimeout(() => {
+        delete cooldowns.current[alert.pair];
+      }, 30_000);
+
+      // D5: Web Audio tone (only high/medium reach here)
+      playSignalAlert(alert.quality as "high" | "medium");
+
+      // D5: browser notification (quality is "high" | "medium" after filter)
+      const payload = formatSignalNotification({
+        pair: alert.pair,
+        direction: alert.direction,
+        quality: alert.quality as "high" | "medium",
+        entry_levels: alert.entry_levels,
+        stop_loss_price: alert.stop_loss_price,
+        take_profit_1_price: alert.take_profit_1_price,
+        atr: alert.atr,
+      });
+      sendBrowserNotification(payload);
+    },
+  });
 }
 
 // ── provider ──────────────────────────────────────────────────────────────────
@@ -58,6 +96,9 @@ export function NotificationProvider({ children }: PropsWithChildren): JSX.Eleme
   }, []);
 
   const { notifications, unseenCount, markSeen, ack } = useNotifications({ onNew });
+
+  // D5: WebSocket signal audio + browser notification (always-on at root)
+  useSignalAudio();
 
   const initializedRef = useRef(false);
   useEffect(() => {
