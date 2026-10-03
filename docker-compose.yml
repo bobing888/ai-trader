@@ -56,7 +56,7 @@ services:
     volumes:
       - /etc/nginx/ssl:/etc/nginx/ssl:ro
     ports:
-      - "80:80"
+      - "8123:8123"
       - "443:443"
 
 volumes:
