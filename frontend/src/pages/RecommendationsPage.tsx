@@ -462,6 +462,25 @@ function EnhancedSignalCard({
   const confPct = Math.round(signal.confidence * 100);
   const leverage = signal.suggested_leverage ?? 1;
 
+  // 2026-10-03: 进/离场时间窗口（分钟） — 用户要求看"挂单到什么时候 / 几时该平仓"
+  const generatedAt = signal.generated_at
+    ? new Date(signal.generated_at)
+    : new Date();
+  const fmtDeadline = (mins: number) => {
+    const d = new Date(generatedAt.getTime() + mins * 60_000);
+    return d.toLocaleTimeString("zh-CN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+  const fmtWindow = (mins: number): string => {
+    if (mins < 60) return `${mins} 分钟内`;
+    if (mins < 1440) return `${Math.round(mins / 60)} 小时内`;
+    return `${Math.round(mins / 1440)} 天内`;
+  };
+  const entryWin = signal.entry_window_minutes ?? null;
+  const exitWin = signal.exit_window_minutes ?? null;
+
   // 跟单 dialog state（卡片内直接管理）
   const [followOpen, setFollowOpen] = useState(false);
   // OKX 形态 (BTC-USDT) → binance 形态 (BTCUSDT) 转换
@@ -647,6 +666,11 @@ function EnhancedSignalCard({
             <div className="text-xl font-bold text-text-primary tabular-nums leading-tight font-mono">
               {entryT1 ? entryT1.toFixed(2) : "—"}
             </div>
+            <div className="text-[10px] text-text-tertiary mt-0.5 tabular-nums">
+              {entryWin != null
+                ? `${fmtWindow(entryWin)}（${fmtDeadline(entryWin)} 前）`
+                : "—"}
+            </div>
           </div>
           {/* SL */}
           <div className="rounded-lg bg-bg-tertiary/60 border border-bear/20 px-3 py-2.5">
@@ -657,6 +681,11 @@ function EnhancedSignalCard({
             <div className="text-xl font-bold text-bear tabular-nums leading-tight font-mono">
               {sl != null ? sl.toFixed(2) : "—"}
             </div>
+            <div className="text-[10px] text-bear/70 mt-0.5 tabular-nums">
+              {exitWin != null
+                ? `${fmtWindow(exitWin)}（${fmtDeadline(exitWin)} 前）`
+                : "—"}
+            </div>
           </div>
           {/* TP1 */}
           <div className="rounded-lg bg-bg-tertiary/60 border border-bull/20 px-3 py-2.5">
@@ -666,6 +695,11 @@ function EnhancedSignalCard({
             </div>
             <div className="text-xl font-bold text-bull tabular-nums leading-tight font-mono">
               {tp1 != null ? tp1.toFixed(2) : "—"}
+            </div>
+            <div className="text-[10px] text-bull/70 mt-0.5 tabular-nums">
+              {exitWin != null
+                ? `${fmtWindow(exitWin)}（${fmtDeadline(exitWin)} 前）`
+                : "—"}
             </div>
           </div>
         </div>

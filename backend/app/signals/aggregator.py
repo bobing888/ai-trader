@@ -237,6 +237,19 @@ class AggregatedSignal:
     # D3: trailing + partial TP
     trailing_stop_enabled: bool = True
     partial_tp_enabled: bool = True
+    # 2026-10-03: 进/离场时间窗口（基于 timeframe 推 N 根 K 线，分钟数）
+    # None 表示 D1 不可用（缺 candles/price）
+    entry_window_minutes: int | None = None
+    exit_window_minutes: int | None = None
+
+
+# 2026-10-03: 进/离场时间窗口常量（分钟）— spec §"What/改动2"
+_TIMEFRAME_WINDOW_MINUTES: dict[str, tuple[int, int]] = {
+    "5m":  (5, 15),       # entry=1 根, exit=3 根
+    "15m": (15, 60),      # entry=1 根, exit=4 根
+    "1h":  (60, 240),     # entry=1 根, exit=4 根
+    "1d":  (1440, 4320),  # entry=1 根, exit=3 根
+}
 
 
 class SignalAggregator:
@@ -440,6 +453,19 @@ class SignalAggregator:
                 take_profit_2_price = lvls["take_profit_2_price"]
                 rr = lvls["risk_reward_ratio"]
 
+        # 2026-10-03: 进/离场时间窗口（基于 timeframe 推 N 根 K 线）
+        #   5m  → entry=5min, exit=15min (3 根)
+        #   15m → entry=15min, exit=60min (4 根)
+        #   1h  → entry=60min, exit=240min (4 根)
+        #   1d  → entry=1440min, exit=4320min (3 根)
+        # D1 不可用时保持 None
+        entry_window_minutes: int | None = None
+        exit_window_minutes: int | None = None
+        if entry_levels and stop_loss_price:
+            window = _TIMEFRAME_WINDOW_MINUTES.get(tf)
+            if window:
+                entry_window_minutes, exit_window_minutes = window
+
         # D2: signal quality gate
         from app.signals.quality_gate import evaluate_signal_quality
         quality_result = evaluate_signal_quality(
@@ -473,6 +499,8 @@ class SignalAggregator:
             risk_reward_ratio=rr,
             quality=quality_result["quality"],
             quality_reasons=quality_result["reasons"],
+            entry_window_minutes=entry_window_minutes,
+            exit_window_minutes=exit_window_minutes,
         )
 
     def _compute_entry_zones(

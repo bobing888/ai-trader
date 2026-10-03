@@ -40,6 +40,10 @@ class RecommendationHistoryOut(BaseModel):
     quality: str | None = None
     quality_reasons: list[str] = []
 
+    # 2026-10-03: 进/离场时间窗口（分钟，基于 timeframe 推 N 根 K 线）
+    entry_window_minutes: int | None = None
+    exit_window_minutes: int | None = None
+
     # Horizon tier + leverage (spec §3.A)
     horizon_tier: str = "P1_short"  # P0_long / P0_cross_month / P1_mid / P1_short / P2_ultra / P3_uhf
     leverage: int = 1

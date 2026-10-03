@@ -245,6 +245,10 @@ class RecommendationHistory(Base):
     quality: Mapped[str | None] = mapped_column(String(20), nullable=True)  # high|medium|low|reject
     quality_reasons_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
 
+    # ── 2026-10-03: 进/离场时间窗口（分钟）──
+    entry_window_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    exit_window_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
 
 class BacktestRun(Base):
     """Walk-forward 回测运行记录（Phase 1 signal credibility）。

@@ -111,6 +111,9 @@ def _apply_d1_d2_migration() -> None:
         ("current_price", "REAL"),
         ("quality", "VARCHAR(20)"),
         ("quality_reasons_json", "TEXT"),
+        # 2026-10-03: 进/离场时间窗口
+        ("entry_window_minutes", "INTEGER"),
+        ("exit_window_minutes", "INTEGER"),
     ]
     with engine.begin() as conn:
         for col, decl in migrations:

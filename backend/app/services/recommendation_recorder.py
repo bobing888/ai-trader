@@ -371,6 +371,9 @@ class RecommendationRecorder:
             quality_reasons_json=(
                 json.dumps(signal.quality_reasons) if signal.quality_reasons else None
             ),
+            # 2026-10-03: 进/离场时间窗口
+            entry_window_minutes=signal.entry_window_minutes,
+            exit_window_minutes=signal.exit_window_minutes,
         )
 
     async def _write_no_data(self, pair: str, timeframe: str, reason: str) -> None:
