@@ -203,6 +203,22 @@ export interface BatchSignalsResponse {
   regime_global: RegimeInfo | null;
 }
 
+export interface Ticker {
+  symbol: string;
+  price: number;
+  change_24h?: number;
+}
+
+/** 实时 ticker（用于推荐卡片显示"现在市价"） */
+export async function fetchTickers(pairs: string[]): Promise<Ticker[]> {
+  if (pairs.length === 0) return [];
+  const { data } = await apiClient.get<{ tickers: Ticker[]; source: string }>(
+    "/ticker/batch",
+    { params: { symbols: pairs.join(",") } },
+  );
+  return data.tickers;
+}
+
 /** Fetch recommendation signal for a single pair */
 export async function fetchSignal(pair: string, timeframe = "1h"): Promise<SignalResponse> {
   const { data } = await apiClient.get<SignalResponse>(
