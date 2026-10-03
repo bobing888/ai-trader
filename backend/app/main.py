@@ -169,6 +169,40 @@ def create_app() -> FastAPI:
     from app.api.backtest import router as backtest_router
     app.include_router(backtest_router)
 
+    # === DEBUG ONLY: recorder 内部状态 (临时,排查 5m/15m 持续 no_data) ===
+    from fastapi import APIRouter
+    debug_router = APIRouter(prefix="/api/debug", tags=["debug"])
+
+    @debug_router.get("/recorder")
+    async def debug_recorder():
+        from app.services.recommendation_recorder import get_recorder
+        try:
+            rec = get_recorder()
+        except RuntimeError:
+            return {"error": "recorder not initialized"}
+        out: dict = {
+            "_running": rec._running,
+            "_tasks_count": len(rec._tasks),
+            "_tasks_done": [t.done() for t in rec._tasks],
+            "_last_bucket_ts": rec._last_bucket_ts,
+            "_candle_queues": {k: q.qsize() for k, q in rec._candle_queues.items()},
+        }
+        for pair, buf in rec._candles_1m.items():
+            if buf:
+                out[f"candles_1m/{pair}"] = {
+                    "len": len(buf),
+                    "first_ts": buf[0]["ts"],
+                    "last_ts": buf[-1]["ts"],
+                    "first_ts_unit": "ns" if buf[0]["ts"] > 1e15 else "ms",
+                    "last_ts_unit": "ns" if buf[-1]["ts"] > 1e15 else "ms",
+                    "first_vol_type": type(buf[0].get("vol")).__name__,
+                    "last_vol_type": type(buf[-1].get("vol")).__name__,
+                }
+            else:
+                out[f"candles_1m/{pair}"] = {"len": 0}
+        return out
+    app.include_router(debug_router)
+
     return app
 
 
