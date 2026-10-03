@@ -155,7 +155,11 @@ class RecommendationRecorder:
                     continue
                 self._push_candle(pair, candle)
                 # 2026-10-03: 跨 timeframe 桶边界时强制重扫,保证 DB 不 stale
-                await self._scan_with_boundary_check(pair, candle["ts"])
+                # 2026-10-03: try/except 保护,防止 _scan_with_boundary_check 抛异常干掉 _consume 循环
+                try:
+                    await self._scan_with_boundary_check(pair, candle["ts"])
+                except Exception as exc:
+                    logger.exception("[recorder] %s scan failed (will continue): %s", pair, exc)
                 continue
 
             # WS 2s 内无推送 — 检查是否要切 REST fallback
@@ -196,7 +200,17 @@ class RecommendationRecorder:
                 if klines and len(klines) > 0:
                     # 2026-10-03: 跨 tf 桶边界时强制重扫 (REST 兜底也要走边界检测)
                     last_ts = int(klines[0]["time"]) * 1000
-                    await self._scan_with_boundary_check(pair, last_ts)
+                    logger.info(
+                        "[recorder] %s REST polling fired, klines=%d, last_ts=%d (%s), _last_bucket_ts=%s",
+                        pair, len(klines), last_ts,
+                        datetime.fromtimestamp(last_ts/1000, tz=UTC).isoformat(),
+                        self._last_bucket_ts.get(pair, {}),
+                    )
+                    # 2026-10-03: try/except 保护,防止 _scan_with_boundary_check 抛异常干掉 _consume 循环
+                    try:
+                        await self._scan_with_boundary_check(pair, last_ts)
+                    except Exception as exc:
+                        logger.exception("[recorder] %s scan failed (will continue): %s", pair, exc)
                 await asyncio.sleep(60)
 
     def _push_candle(self, pair: str, candle: dict) -> None:
