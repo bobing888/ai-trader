@@ -36,6 +36,28 @@ def _patch_external_io(monkeypatch):
     monkeypatch.setattr(rse.RegimeShiftEngine, "start", _e)
     monkeypatch.setattr(rse.RegimeShiftEngine, "stop", _e)
 
+    # 隔离 DB:避免 _send_initial_snapshot 在测试期去查空 production DB
+    # 注入一个返回空 list 的 SessionLocal → snapshot 立即走完 → 落到 queue.get()
+    class _FakeResult:
+        def scalars(self):
+            class _Scalars:
+                def all(self_inner):
+                    return []
+            return _Scalars()
+
+    class _FakeSession:
+        def execute(self, *a, **kw):
+            return _FakeResult()
+        def close(self):
+            pass
+
+    def _fake_session_local():
+        return _FakeSession()
+
+    from app.db import session as _db_mod
+
+    monkeypatch.setattr(_db_mod, "SessionLocal", _fake_session_local)
+
 
 def test_ws_connection_accepted():
     """ws endpoint 应 accept connection 不立即断开。"""
@@ -56,9 +78,37 @@ def test_ws_receives_signal_change():
 
     with TestClient(app) as client:
         bus = get_signal_bus()
-        curr = MagicMock()
-        curr.id = 42
-        curr.scanned_at = datetime.now(UTC)
+        # 用一个最小可 JSON 序列化的 stub rec（MagicMock 默认任意属性返 MagicMock → json 序列化失败 → send 抛错）
+        # 协议层测试只需 verify emit→receive 流转,字段详细 shape 由 serializer 单测覆盖
+        class _StubRec:
+            id = 42
+            scanned_at = datetime.now(UTC)
+            pair = "BTC-USDT"
+            timeframe = "1h"
+            has_signal = True
+            direction = "long"
+            confidence = 0.8
+            regime = "bull"
+            regime_confidence = 0.6
+            contributing_strategies = "[]"
+            reasons = "[]"
+            suggested_leverage = 1
+            min_agreement_used = 2
+            fast_path = False
+            outcome = None
+            source = "test"
+            calibrated_confidence = None
+            net_pnl_estimate = None
+            entry_levels_json = None
+            stop_loss_price = None
+            take_profit_1_price = None
+            take_profit_2_price = None
+            atr = None
+            risk_reward_ratio = None
+            current_price = None
+            quality = "medium"
+            quality_reasons_json = None
+        curr = _StubRec()
 
         # 在 connect 之外预订阅,emit;在 connect 内通过 sub 接收
         # 但 TestClient.websocket_connect 内部 loop,emit 必须在主线程串行
