@@ -37,7 +37,7 @@ type TimeframeOption = (typeof TIMEFRAME_OPTIONS)[number]["value"];
 export function DashboardPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [timeframe, setTimeframe] = useState<TimeframeOption>("1h");
+  const [timeframe, setTimeframe] = useState<TimeframeOption>("4h");
 
   const { data, isLoading, error, isFetching, dataUpdatedAt } = useQuery<OverviewResponse>({
     queryKey: ["dashboard", "overview", [...DASHBOARD_DEFAULT_SYMBOLS], timeframe],
