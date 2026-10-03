@@ -1,6 +1,7 @@
 """
 推荐单引擎 — Strategy Pool
 7 个策略骨架，各自对应不同的市场状态和信号类型
++ horizon_tier + informative_timeframes（Task 3）
 """
 
 from dataclasses import dataclass, field
@@ -8,6 +9,8 @@ from enum import Enum
 from typing import Protocol
 
 import numpy as np
+
+from app.signals.horizon import HorizonTier
 
 
 class StrategyId(Enum):
@@ -105,6 +108,8 @@ def volume_profile(volumes: np.ndarray, prices: np.ndarray, bins: int = 20) -> d
 class MomentumStrategy:
     """趋势跟踪：EMA 金叉/死叉 + RSI 确认"""
     ID = StrategyId.MOMENTUM
+    horizon_tier: HorizonTier = HorizonTier.P0_LONG
+    informative_timeframes: list[str] = ["1d", "4h", "1h"]
 
     def evaluate(self, candles: dict, volumes: np.ndarray, regime: str) -> StrategyResult:
         close = np.array(candles["close"], dtype=np.float64)
@@ -162,6 +167,8 @@ class MomentumStrategy:
 class MeanReversionStrategy:
     """均值回归：布林带 + RSI"""
     ID = StrategyId.REVERSAL
+    horizon_tier: HorizonTier = HorizonTier.P0_CROSS_MONTH
+    informative_timeframes: list[str] = ["1w", "1d", "4h"]
 
     def evaluate(self, candles: dict, volumes: np.ndarray, regime: str) -> StrategyResult:
         """v2: 均值回归放宽 — 在 choppy/bear/bull 都允许触发。"""
@@ -211,6 +218,8 @@ class MeanReversionStrategy:
 class BreakoutStrategy:
     """突破策略：区间高点/低点 + 成交量确认"""
     ID = StrategyId.BREAKOUT
+    horizon_tier: HorizonTier = HorizonTier.P1_MID
+    informative_timeframes: list[str] = ["4h", "1h", "15m"]
 
     def evaluate(self, candles: dict, volumes: np.ndarray, regime: str) -> StrategyResult:
         close = np.array(candles["close"], dtype=np.float64)
@@ -259,6 +268,8 @@ class BreakoutStrategy:
 class VolatilityStrategy:
     """波动率策略：ATR 通道 + 极端波动预警"""
     ID = StrategyId.VOLATILITY
+    horizon_tier: HorizonTier = HorizonTier.P1_SHORT
+    informative_timeframes: list[str] = ["1h", "15m", "5m"]
 
     def evaluate(self, candles: dict, volumes: np.ndarray, regime: str) -> StrategyResult:
         close = np.array(candles["close"], dtype=np.float64)
@@ -303,6 +314,8 @@ class VolatilityStrategy:
 class SentimentStrategy:
     """情绪反向：恐惧/贪婪指标"""
     ID = StrategyId.SENTIMENT
+    horizon_tier: HorizonTier = HorizonTier.P2_ULTRA
+    informative_timeframes: list[str] = ["5m"]
 
     def evaluate(self, candles: dict, volumes: np.ndarray, regime: str) -> StrategyResult:
         close = np.array(candles["close"], dtype=np.float64)
@@ -339,6 +352,8 @@ class SentimentStrategy:
 class VolumeProfileStrategy:
     """量价共振：POC 支撑/阻力"""
     ID = StrategyId.VOLUME
+    horizon_tier: HorizonTier = HorizonTier.P3_UHF
+    informative_timeframes: list[str] = ["1m"]
 
     def evaluate(self, candles: dict, volumes: np.ndarray, regime: str) -> StrategyResult:
         close = np.array(candles["close"], dtype=np.float64)
@@ -372,6 +387,8 @@ class VolumeProfileStrategy:
 class MultiTimeframeStrategy:
     """多周期均线共振 — v2: 自适应 EMA 周期，超短线也能触发。"""
     ID = StrategyId.MULTI_TF
+    horizon_tier: HorizonTier = HorizonTier.P3_UHF
+    informative_timeframes: list[str] = ["1m"]
 
     def evaluate(self, candles: dict, volumes: np.ndarray, regime: str) -> StrategyResult:
         close = np.array(candles["close"], dtype=np.float64)
@@ -434,6 +451,8 @@ class MultiTimeframeStrategy:
 class ConfluenceStrategy:
     """多指标共振策略：基于 multi_indicator_confluence 评分决策"""
     ID = StrategyId.CONFLUENCE
+    horizon_tier: HorizonTier = HorizonTier.P1_SHORT
+    informative_timeframes: list[str] = ["1h", "15m", "5m"]
 
     def evaluate(self, candles: dict, volumes: np.ndarray, regime: str) -> StrategyResult:
         from app.analytics.trend import multi_indicator_confluence
