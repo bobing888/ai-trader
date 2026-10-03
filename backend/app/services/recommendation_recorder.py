@@ -71,7 +71,22 @@ def _resample_ohlcv(
         b["h"] = max(b["h"], c["h"])
         b["l"] = min(b["l"], c["l"])
         b["c"] = c["c"]  # last seen close
-        b["vol"] += c["vol"]
+        # 2026-10-03: 防御性 float() 转换,防止 OKX 偶尔返回 string volume
+        c_vol = c["vol"]
+        if not isinstance(c_vol, (int, float)):
+            # 调查: 哪根 candle 的 vol 是 str?
+            logger.warning(
+                "[recorder] resample got non-numeric vol: type=%s value=%r ts=%s",
+                type(c_vol).__name__, c_vol, c.get("ts"),
+            )
+            try:
+                c_vol = float(c_vol)
+            except (TypeError, ValueError):
+                c_vol = 0.0
+        b_vol = b["vol"]
+        if not isinstance(b_vol, (int, float)):
+            b_vol = float(b_vol) if b_vol else 0.0
+        b["vol"] = b_vol + c_vol
     return sorted(buckets.values(), key=lambda x: x["ts"])
 
 
