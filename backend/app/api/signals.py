@@ -118,13 +118,15 @@ async def get_recommendation(
         result = strategy.evaluate(candles_dict, volumes, regime_info_obj.regime.value)
         strategy_results.append(result)
 
-    # v2: 传入 timeframe
+    # v2: 传入 timeframe + 强趋势信号 (adx/hurst)
     aggregator = SignalAggregator()
     sig = aggregator.aggregate(
         strategy_results,
         regime_info_obj.regime,
         regime_info_obj.confidence,
         timeframe=timeframe,
+        adx=regime_info_obj.adx,
+        hurst=regime_info_obj.hurst,
     )
 
     return _build_signal_response(sig, regime_info)

@@ -156,23 +156,48 @@ def _select_affinity(regime: Regime, direction: str) -> dict[StrategyId, float]:
     return _AFFINITY_CHOPPY_LONG if direction == "long" else _AFFINITY_CHOPPY_SHORT
 
 
-# ─── 动态 min_agreement（v2 新增）───────────────────────────────────────────
+# ─── 动态 min_agreement（v2 改进 — 强趋势时放宽到 1）───────────────────────
 
-def _dynamic_min_agreement(regime: Regime, has_strong_signal: bool) -> int:
+def _dynamic_min_agreement(
+    regime: Regime,
+    has_strong_signal: bool,
+    adx: float | None = None,
+    hurst: float | None = None,
+) -> int:
     """
-    根据 regime 决定最少需要几个策略达成一致。
+    根据 regime + 趋势强度决定最少需要几个策略达成一致。
 
-    规则（v2 改进）：
-    - bull/bear + 有强信号 (>=0.85)：1 个即可
-    - bull/bear 无强信号：2 个
-    - choppy + 有强信号：1 个即可
-    - choppy 无强信号：2 个（用 reversal/volume 共识）
-    - crisis: 必须 2 个（防假信号）
+    v2 改进（2026-10-03）:
+    - 旧版只信 has_strong_signal(>=0.85),但实际策略 confidence 上限 0.85,几乎不触发
+    - 新增 ADX + Hurst 透传:bull/bear + ADX>=20 + Hurst>=0.55 → 强趋势
+      → 强趋势时只要求 1 个策略一致(防止中等趋势被 min_agreement=2 卡死)
+    - choppy + 无 ADX/Hurst 支持 → 保持 2 (不能乱出)
+    - CRISIS: 维持 2 (防假信号)
+
+    规则表:
+      regime    ADX≥20  Hurst≥0.55  has_strong  min
+      CRISIS    -       -           -           2
+      CRISIS    -       -           true        1
+      BULL/BEAR true    true        -           1   ← 新规则
+      BULL/BEAR -       -           true        1
+      BULL/BEAR -       -           false       2
+      CHOPPY    -       -           true        1
+      CHOPPY    -       -           false       2
     """
     if regime == Regime.CRISIS:
         return 1 if has_strong_signal else 2
 
-    # bull/bear/choppy
+    # bull/bear: 强趋势(ADX>=20 + Hurst>=0.55) 或 强信号 即可 1 个
+    if regime in (Regime.BULL, Regime.BEAR):
+        strong_trend = (
+            adx is not None and adx >= 20.0
+            and hurst is not None and hurst >= 0.55
+        )
+        if strong_trend or has_strong_signal:
+            return 1
+        return 2
+
+    # choppy: 必须有强信号才能 1,否则 2
     return 1 if has_strong_signal else 2
 
 
@@ -239,12 +264,15 @@ class SignalAggregator:
         timeframe: str = "1h",
         candles_dict: dict[str, list[dict]] | None = None,
         current_price: float | None = None,
+        adx: float | None = None,
+        hurst: float | None = None,
     ) -> Optional[AggregatedSignal]:
         """
         聚合策略信号（v2）。
 
         candles_dict: {pair: candles}  — 用于 ATR / D1 execution levels
         current_price: 现价 dict（key=pair），None 时跳过 D1 计算
+        adx / hurst: 透传给 _dynamic_min_agreement — 强趋势时放宽到 1
         """
         if not strategy_results:
             return None
@@ -267,8 +295,8 @@ class SignalAggregator:
         has_strong_short = any(s.confidence >= 0.85 for s in short_signals)
         has_strong_signal = has_strong_long or has_strong_short
 
-        # v2: 动态 min_agreement
-        min_agr = _dynamic_min_agreement(regime, has_strong_signal)
+        # v2 改进 (2026-10-03): 透传 adx/hurst,强趋势时 min_agreement 降到 1
+        min_agr = _dynamic_min_agreement(regime, has_strong_signal, adx=adx, hurst=hurst)
 
         # 选更一致的方向（v2: tie-break 更公平——按 (count, avg_confidence) 比较）
         best_direction = None
@@ -323,6 +351,14 @@ class SignalAggregator:
         if best_direction is None:
             # 无足够共识信号
             return None
+
+        # v2 改进 (2026-10-03): choppy 无 trend 时,若双方都有信号但 min(比例) ≥ max/2 → 方向冲突 None
+        # 防止"1 long 0.6 vs 2 short 0.55+0.5"误选 short
+        if regime == Regime.CHOPPY and (adx is None or adx < 15):
+            if long_count > 0 and short_count > 0:
+                if min(long_count, short_count) * 2 >= max(long_count, short_count):
+                    # 比例 1:1 或 1:2 → 都算冲突
+                    return None
 
         fast_path = has_strong_signal and (long_count + short_count) < 2 * min_agr
 

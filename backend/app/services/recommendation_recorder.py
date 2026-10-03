@@ -17,6 +17,8 @@ from collections import deque
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from app.config import settings
 from app.services.signal_change_bus import SignalChangeBus, SignalChangeEvent
 
@@ -201,9 +203,21 @@ class RecommendationRecorder:
         from app.signals.strategy_pool import STRATEGY_INSTANCES
 
         regime_info = RegimeDetector().detect(candles, timeframe)
+
+        # recorder 调用 strategy 的正确姿势 (与 api/signals.py 一致):
+        #   evaluate(candles_dict 含 symbol/timeframe/close/..., volumes, regime)
+        candles_dict = {
+            "symbol": pair,
+            "timeframe": timeframe,
+            "close": [c.get("c", c.get("close", 0.0)) for c in candles],
+            "open": [c.get("o", c.get("open", 0.0)) for c in candles],
+            "high": [c.get("h", c.get("high", 0.0)) for c in candles],
+            "low": [c.get("l", c.get("low", 0.0)) for c in candles],
+        }
+        volumes = np.array([c.get("vol", c.get("volume", 1.0)) for c in candles], dtype=np.float64)
         strategy_results = [
-            s.evaluate(candles, pair=pair, timeframe=timeframe)
-            for s in STRATEGY_INSTANCES
+            s.evaluate(candles_dict, volumes, regime_info.regime.value)
+            for s in STRATEGY_INSTANCES.values()
         ]
 
         # D1: 转成 aggregator 期望的字段名 (open/high/low/close + open_time)
@@ -216,6 +230,8 @@ class RecommendationRecorder:
             timeframe,
             candles_dict={pair: ohlcv_for_agg},
             current_price={pair: current_price},
+            adx=regime_info.adx,
+            hurst=regime_info.hurst,
         )
 
     @staticmethod
