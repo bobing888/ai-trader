@@ -152,6 +152,7 @@ rsync -avz --delete -e "$RSYNC_SSH" \
   --exclude='backend/.ruff_cache/' \
   --exclude='.claude/' \
   --exclude='.cursor/' \
+  --exclude='.worktrees/' \
   --exclude='.idea/' \
   --exclude='*.log' \
   "$LOCAL_DIR/" "${SSH_TARGET}:${REMOTE_DIR}/"
