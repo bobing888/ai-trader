@@ -10,10 +10,12 @@
 
 from __future__ import annotations
 
+from .agent import TrendAgent
 from .schemas import AgentRecommendation, AnalysisReport, AnalysisStatus
 
 __all__ = [
     "AgentRecommendation",
     "AnalysisReport",
     "AnalysisStatus",
+    "TrendAgent",
 ]
