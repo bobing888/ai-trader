@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections import deque
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -118,16 +119,76 @@ class RecommendationRecorder:
         self._tasks.clear()
 
     async def _consume(self, pair: str, queue: asyncio.Queue) -> None:
-        """每条 1m K 线推送 → 缓存 → 触发 scan。"""
+        """每条 1m K 线推送 → 缓存 → 触发 scan。
+
+        WS fallback (kbkkk.com 2026-10-03):
+          OKX V5 公共 WS candle* 整体 60018 (channel doesn't exist) — 数据不会来。
+          30s 内 queue 没数据 → 自动切 REST polling 每 60s 拉 1m K 线, 直到 WS 修好。
+          WS 修好后, REST polling 检测到 WS 有数据 → 自动停 polling, 回到 WS。
+        """
+        from app.data.okx import okx_client
+
+        ws_last_seen = time.monotonic()
+        rest_polling_active = False
+
         while self._running:
+            # 优先等 WS 推送（timeout=2s, 让 fallback 检测能跑）
             try:
-                candle = await queue.get()
+                candle = await asyncio.wait_for(queue.get(), timeout=2.0)
+            except asyncio.TimeoutError:
+                candle = None
             except asyncio.CancelledError:
                 break
-            if not candle.get("confirm"):
-                continue  # skip 未确认
-            self._push_candle(pair, candle)
-            await self._scan_all_timeframes(pair)
+
+            if candle is not None:
+                # WS alive, 走正常路径
+                ws_last_seen = time.monotonic()
+                if rest_polling_active:
+                    logger.info("[recorder] %s: WS 恢复, 停 REST polling", pair)
+                    rest_polling_active = False
+                if not candle.get("confirm"):
+                    continue
+                self._push_candle(pair, candle)
+                await self._scan_all_timeframes(pair)
+                continue
+
+            # WS 2s 内无推送 — 检查是否要切 REST fallback
+            now = time.monotonic()
+            if (now - ws_last_seen) > 30.0 and not rest_polling_active:
+                logger.warning(
+                    "[recorder] %s: WS 30s 无数据, 启用 REST polling fallback "
+                    "(kbkkk.com OKX V5 candle* WS 已知 60018 拒订阅)",
+                    pair,
+                )
+                rest_polling_active = True
+
+            if rest_polling_active:
+                try:
+                    klines = await okx_client.get_klines(pair, "1m", 200)
+                except Exception as exc:
+                    logger.warning("[recorder] %s REST klines failed: %s", pair, exc)
+                    await asyncio.sleep(60)
+                    continue
+                # 转成 candles_1m 格式
+                self._candles_1m[pair] = deque(
+                    (
+                        {
+                            "ts": int(k["time"]) * 1000,
+                            "o": k["open"],
+                            "h": k["high"],
+                            "l": k["low"],
+                            "c": k["close"],
+                            "vol": k["volume"],
+                            "confirm": True,
+                        }
+                        for k in reversed(klines)  # get_klines 返回倒序, 还原成时间升序
+                    ),
+                    maxlen=200,
+                )
+                # 仅在最近 1 根 confirm 时触发 scan
+                if klines and len(klines) > 0:
+                    await self._scan_all_timeframes(pair)
+                await asyncio.sleep(60)
 
     def _push_candle(self, pair: str, candle: dict) -> None:
         buf = self._candles_1m.setdefault(pair, deque(maxlen=200))
