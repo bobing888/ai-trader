@@ -47,6 +47,12 @@ def get_latest(
     db: Annotated[Session, Depends(get_db)],
     pair: Annotated[str, Query(description="OKX 形态 pair")],
     timeframe: Annotated[str, Query(description="5m|15m|1h|4h|1d")],
+    horizon: Annotated[
+        str | None,
+        Query(
+            description="horizon tier: P0_long | P0_cross_month | P1_mid | P1_short | P2_ultra | P3_uhf",
+        ),
+    ] = None,
 ) -> RecommendationHistory:
     rec = (
         db.query(RecommendationHistory)

@@ -40,6 +40,11 @@ class RecommendationHistoryOut(BaseModel):
     quality: str | None = None
     quality_reasons: list[str] = []
 
+    # Horizon tier + leverage (spec §3.A)
+    horizon_tier: str = "P1_short"  # P0_long / P0_cross_month / P1_mid / P1_short / P2_ultra / P3_uhf
+    leverage: int = 1
+    expires_at: datetime | None = None
+
     @field_serializer("entry_levels", "quality_reasons")
     def _serialize_list(self, value):
         return value or []
