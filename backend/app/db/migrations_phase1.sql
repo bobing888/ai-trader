@@ -14,6 +14,9 @@ ALTER TABLE recommendation_history ADD COLUMN holding_minutes INTEGER;
 ALTER TABLE recommendation_history ADD COLUMN outcome_label VARCHAR(20);
 ALTER TABLE recommendation_history ADD COLUMN pnl_pct REAL;
 ALTER TABLE recommendation_history ADD COLUMN closed_at DATETIME;
+-- 2026-10-03 进/离场时间窗口
+ALTER TABLE recommendation_history ADD COLUMN entry_window_minutes INTEGER;
+ALTER TABLE recommendation_history ADD COLUMN exit_window_minutes INTEGER;
 
 CREATE INDEX IF NOT EXISTS idx_reco_history_tf_outcome
     ON recommendation_history(timeframe, outcome_label);

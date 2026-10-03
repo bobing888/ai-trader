@@ -171,6 +171,9 @@ export interface RecommendationSignal {
   atr?: number | null;
   risk_reward_ratio?: number | null;
   current_price?: number | null;
+  // 2026-10-03: 进/离场时间窗口（分钟）
+  entry_window_minutes?: number | null;
+  exit_window_minutes?: number | null;
   // D2: quality gate
   quality?: "high" | "medium" | "low" | "reject" | null;
   quality_reasons?: string[];
