@@ -86,6 +86,18 @@ async def lifespan(app: FastAPI):
     )
     logger.info("outcome_worker scheduler started (interval=5min)")
 
+    # === Phase 1 signal credibility: calibration trainer (2026-10-03) ===
+    # 修复 calibrated_confidence 永远是 NULL 的 bug:
+    # 旧 train_calibrator() 在生产代码零 caller;现在每 24h 自动扫 recommendation_history
+    # 重训 PAVA Isotonic calibrator,逐步走出冷启动
+    from app.services.calibration_trainer import calibration_trainer_loop
+    calibration_task = asyncio.create_task(
+        calibration_trainer_loop(
+            session_factory=SessionLocal,
+        )
+    )
+    logger.info("calibration_trainer scheduler started (interval=24h)")
+
     # 启动 GitHub sync 后台循环
     sync_task = None
     if settings.github_sync_enabled:
@@ -102,6 +114,10 @@ async def lifespan(app: FastAPI):
         outcome_task.cancel()
         with __import__("contextlib").suppress(asyncio.CancelledError, Exception):
             await outcome_task
+        # calibration_trainer 清理
+        calibration_task.cancel()
+        with __import__("contextlib").suppress(asyncio.CancelledError, Exception):
+            await calibration_task
         # === B-Follow Step 2 清理 ===
         await follow_scheduler.stop()
         await recorder.stop()

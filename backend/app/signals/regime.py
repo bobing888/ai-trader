@@ -345,13 +345,17 @@ class RegimeDetector:
         if abs(cum_ret) > ret_bull_thr * 2:
             choppy_score *= 0.4
 
-        # Softmax 归一化（温度 1.0）
+        # Softmax 归一化（temperature=0.4 拉大差距,撤掉旧 +0.05 floor）
+        # rationale: +0.05 floor 把所有状态拉到接近 0.25,导致 4 个值差距 < 0.07
+        # production data (kbkkk 2026-10-03) bull:0.27 bear:0.29 choppy:0.22 crisis:0.22
+        # → 强 bull 应能拉到 ≥ 0.5,差距 1.4x+ over second
         scores = np.array(
             [bull_score, bear_score, choppy_score, crisis_score],
             dtype=np.float64,
         )
-        scores = np.clip(scores, 0.0, None) + 0.05  # 平滑 floor
-        exp = np.exp(scores - scores.max())
+        scores = np.clip(scores, 0.0, None)
+        temperature = 0.4
+        exp = np.exp((scores - scores.max()) / temperature)
         probs = exp / exp.sum()
         return probs, (adx_val or 0.0), (hurst_val or 0.5)
 
@@ -477,3 +481,35 @@ class RegimeDetector:
             hurst=self._hurst_val,
             trend_strength_label=trend_label,
         )
+
+    @staticmethod
+    def detect(
+        candles: list[dict],
+        timeframe: str = "1h",
+    ) -> RegimeInfo:
+        """shim 给 RecommendationRecorder 用 (recorder._compute_signal)。
+
+        输入: list[dict] 形态 candles, 每根含 o/h/l/c/vol/timestamp
+        输出: RegimeInfo (同 update())
+
+        修复记录: 2026-10-03 — recorder 之前调 .detect() 抛 AttributeError,
+        导致 recommendation_history 表全空。
+        """
+        if not candles or len(candles) < 30:
+            return RegimeInfo(
+                regime=Regime.CHOPPY,
+                confidence=0.3,
+                regime_probs={r: 0.25 for r in Regime},
+                description="数据不足·默认震荡",
+                adx=None,
+                hurst=None,
+                trend_strength_label="未初始化",
+            )
+        import numpy as np
+        closes = np.array([c.get("c", c.get("close", 0.0)) for c in candles], dtype=np.float64)
+        volumes = np.array([c.get("vol", c.get("volume", 1.0)) for c in candles], dtype=np.float64)
+        highs = np.array([c.get("h", c.get("high", 0.0)) for c in candles], dtype=np.float64)
+        lows = np.array([c.get("l", c.get("low", 0.0)) for c in candles], dtype=np.float64)
+        log_returns = np.diff(np.log(closes + 1e-10), prepend=closes[0])
+        detector = RegimeDetector(timeframe=timeframe)
+        return detector.update(log_returns, volumes, high=highs, low=lows, close=closes)
