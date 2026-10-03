@@ -103,6 +103,25 @@ async def lifespan(app: FastAPI):
     if settings.github_sync_enabled:
         sync_task = asyncio.create_task(gh.scheduled_sync_loop())
         logger.info("github sync scheduler started (interval=%sh)", settings.github_sync_interval_hours)
+
+    # === Trend Analysis Agent (Task 9) ===
+    # 5m 循环 — 8 calls per cycle (BTC + ETH × 4 timeframe)
+    # 没 DEEPSEEK_API_KEY 时 runner 会跑 cycle 但全 FALLBACK（graceful degradation）
+    from app.agent import TrendAgent
+    from app.agent.llm_client import DeepSeekProvider
+    from app.agent.reasoner import Reasoner
+    from app.agent.runner import AgentRunner
+
+    deepseek_provider = DeepSeekProvider()
+    reasoner = Reasoner(provider=deepseek_provider)
+    trend_agent = TrendAgent(reasoner=reasoner)
+
+    agent_runner = AgentRunner(agent=trend_agent)
+    agent_runner.start()
+    logger.info(
+        "[main.lifespan] agent_runner started: 5m cycle, "
+        "BTC + ETH × 5m/15m/1h/1d = 8 calls/cycle"
+    )
     try:
         yield
     finally:
@@ -122,6 +141,9 @@ async def lifespan(app: FastAPI):
         await follow_scheduler.stop()
         await recorder.stop()
         await regime_engine.stop()
+        # === Agent cleanup (Task 9) ===
+        await agent_runner.stop()
+        logger.info("[main.lifespan] agent_runner stopped")
         await binance_client.close()
         await okx_client.close()
         await okx_ws_client.stop()
@@ -164,6 +186,10 @@ def create_app() -> FastAPI:
     app.include_router(follows_router)
     app.include_router(recommendations_router)
     app.include_router(recommendations_ws_router)
+
+    # === Agent (Trend Analysis Agent) ===
+    from app.api.agent import router as agent_router
+    app.include_router(agent_router)
 
     # === Phase 1 signal credibility ===
     from app.api.backtest import router as backtest_router
