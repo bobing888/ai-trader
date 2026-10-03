@@ -54,6 +54,12 @@ def _resample_ohlcv(
     if minutes is None or not candles_1m:
         return []
     bucket_ms = minutes * 60 * 1000
+    # 2026-10-03: 归一化 ts 到 ms — WS path 给 ns (int(item[0]) * 1_000_000),
+    # REST path 给 ms (int(k["time"]) * 1000). bucket 计算需要 ms.
+    candles_1m = [
+        {**c, "ts": int(c["ts"]) // 1_000_000 if int(c["ts"]) > 1e15 else int(c["ts"])}
+        for c in candles_1m
+    ]
     buckets: dict[int, dict[str, Any]] = {}
     for c in candles_1m:
         ts = c["ts"]
