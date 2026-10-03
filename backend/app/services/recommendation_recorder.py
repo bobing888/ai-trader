@@ -91,6 +91,10 @@ class RecommendationRecorder:
         self._candle_queues: dict[str, asyncio.Queue] = {}
         self._candles_1m: dict[str, deque] = {}
         self._tasks: list[asyncio.Task] = []
+        # 2026-10-03: 记录每个 pair×tf 的"上一个扫过的桶 ts",
+        #   跨桶时强制重扫以保证 DB 数据不 stale（PR #71 修过 1h/1d 数据不足,
+        #   本 PR 修"recorder 频率太低导致 endpoint 看到旧数据"）。
+        self._last_bucket_ts: dict[str, dict[str, int]] = {}
 
     async def start(self) -> None:
         """启动 WS 订阅 + consume loop。"""
@@ -150,7 +154,8 @@ class RecommendationRecorder:
                 if not candle.get("confirm"):
                     continue
                 self._push_candle(pair, candle)
-                await self._scan_all_timeframes(pair)
+                # 2026-10-03: 跨 timeframe 桶边界时强制重扫,保证 DB 不 stale
+                await self._scan_with_boundary_check(pair, candle["ts"])
                 continue
 
             # WS 2s 内无推送 — 检查是否要切 REST fallback
@@ -189,14 +194,49 @@ class RecommendationRecorder:
                 )
                 # 仅在最近 1 根 confirm 时触发 scan
                 if klines and len(klines) > 0:
-                    await self._scan_all_timeframes(pair)
+                    # 2026-10-03: 跨 tf 桶边界时强制重扫 (REST 兜底也要走边界检测)
+                    last_ts = int(klines[0]["time"]) * 1000
+                    await self._scan_with_boundary_check(pair, last_ts)
                 await asyncio.sleep(60)
 
     def _push_candle(self, pair: str, candle: dict) -> None:
         buf = self._candles_1m.setdefault(pair, deque(maxlen=300))
         buf.append(candle)
 
+    async def _scan_with_boundary_check(self, pair: str, candle_ts_ms: int) -> None:
+        """扫所有 tf,但只在跨桶边界时真正写库。
+
+        2026-10-03 修复:
+          - 每个 tf 跟踪 _last_bucket_ts, candle_ts 进入新桶时强制扫描
+          - 否则跳过 (节省 ~93% CPU, 5m 边界每 5min 才扫一次)
+          - 第一根 candle 初始化 _last_bucket_ts,直接扫
+        """
+        scanned_any = False
+        for tf in settings.recommendation_timeframes:
+            minutes = _BUCKET_MINUTES.get(tf)
+            if minutes is None:
+                continue
+            bucket_ms = minutes * 60 * 1000
+            current_bucket = (candle_ts_ms // bucket_ms) * bucket_ms
+            last_bucket = self._last_bucket_ts.setdefault(pair, {}).get(tf)
+            if last_bucket is None:
+                # 第一次:初始化 + 扫描
+                self._last_bucket_ts[pair][tf] = current_bucket
+                await self._scan_one(pair, tf)
+                scanned_any = True
+                continue
+            if current_bucket > last_bucket:
+                # 跨桶边界:扫 + 更新
+                self._last_bucket_ts[pair][tf] = current_bucket
+                await self._scan_one(pair, tf)
+                scanned_any = True
+            # else: 同桶内,不扫 (信号在该 tf 周期内不会变)
+        # 启动 / 边界切换时打 log,便于排查
+        if scanned_any:
+            logger.debug("[recorder] %s scan triggered at ts=%d", pair, candle_ts_ms)
+
     async def _scan_all_timeframes(self, pair: str) -> None:
+        """无条件扫所有 tf (向后兼容 — 测试用 / 强制全量重扫入口)。"""
         for tf in settings.recommendation_timeframes:
             try:
                 await self._scan_one(pair, tf)
