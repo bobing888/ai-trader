@@ -2,7 +2,7 @@
 
 完整流程:
 1. 启动时给每个 (pair, timeframe) 订阅 okx_ws_client.subscribe_candles(pair, "candle1m")
-2. 每根 1m K 线 confirm=True → 缓存到 candles_1m[pair] (deque maxlen=200)
+2. 每根 1m K 线 confirm=True → 缓存到 candles_1m[pair] (deque maxlen=300, OKX max)
 3. 触发 _scan_all_timeframes(pair): 对 5m/15m/1h/1d 重采样 → 算信号 → 写库 → 查 previous → emit bus
 4. 同步调 SignalAggregator.aggregate()（不 await）
 
@@ -105,7 +105,8 @@ class RecommendationRecorder:
             try:
                 q = await self._ws.subscribe_candles(pair, "candle1m")
                 self._candle_queues[pair] = q
-                self._candles_1m[pair] = deque(maxlen=200)
+                # 2026-10-03: 提升到 300 (OKX max) 让 15m 重采样也够算 RSI(14)+EMA(21)
+                self._candles_1m[pair] = deque(maxlen=300)
                 self._tasks.append(asyncio.create_task(self._consume(pair, q)))
             except Exception as exc:
                 logger.warning("[recorder] subscribe %s failed: %s", pair, exc)
@@ -164,7 +165,8 @@ class RecommendationRecorder:
 
             if rest_polling_active:
                 try:
-                    klines = await okx_client.get_klines(pair, "1m", 200)
+                    # 2026-10-03: 提到 300 (OKX max) 让 15m 也够算 RSI
+                    klines = await okx_client.get_klines(pair, "1m", 300)
                 except Exception as exc:
                     logger.warning("[recorder] %s REST klines failed: %s", pair, exc)
                     await asyncio.sleep(60)
@@ -183,7 +185,7 @@ class RecommendationRecorder:
                         }
                         for k in reversed(klines)  # get_klines 返回倒序, 还原成时间升序
                     ),
-                    maxlen=200,
+                    maxlen=300,
                 )
                 # 仅在最近 1 根 confirm 时触发 scan
                 if klines and len(klines) > 0:
@@ -191,7 +193,7 @@ class RecommendationRecorder:
                 await asyncio.sleep(60)
 
     def _push_candle(self, pair: str, candle: dict) -> None:
-        buf = self._candles_1m.setdefault(pair, deque(maxlen=200))
+        buf = self._candles_1m.setdefault(pair, deque(maxlen=300))
         buf.append(candle)
 
     async def _scan_all_timeframes(self, pair: str) -> None:
@@ -201,16 +203,53 @@ class RecommendationRecorder:
             except Exception as exc:
                 logger.warning("[recorder] %s %s scan failed: %s", pair, tf, exc)
 
+    async def _fetch_candles_direct(self, pair: str, timeframe: str) -> list[dict[str, Any]]:
+        """直接 REST 拉目标 timeframe 的 K 线（用于 1h/1d）。
+
+        OKX 1 次最多 300 根 → 1h = 12.5 天 / 1d = 10 个月，足够 RSI(14) + EMA(21)。
+        转 candles 格式与 _resample_ohlcv 输出对齐: {ts, o, h, l, c, vol}。
+        """
+        from app.data.okx import okx_client
+
+        try:
+            klines = await okx_client.get_klines(pair, timeframe, 300)
+        except Exception as exc:
+            logger.warning("[recorder] %s %s REST klines failed: %s", pair, timeframe, exc)
+            return []
+        # get_klines 返回倒序 → 翻成时间升序
+        return [
+            {
+                "ts": int(k["time"]) * 1000,
+                "o": k["open"],
+                "h": k["high"],
+                "l": k["low"],
+                "c": k["close"],
+                "vol": k["volume"],
+            }
+            for k in reversed(klines)
+        ]
+
     async def _scan_one(self, pair: str, timeframe: str) -> None:
-        """重采样 → 算推荐 → 写库 → emit bus（mock 跳过）。"""
+        """重采样 → 算推荐 → 写库 → emit bus（mock 跳过）。
+
+        2026-10-03 修复 (B 任务后续):
+          - 5m/15m 仍走 candles_1m 重采样（200 根 1m = 5h 历史够算 RSI(14)）
+          - 1h/1d 走 REST 直接拉该周期 K 线（OKX 1 次 300 根 = 1h 12.5d / 1d 10mo，
+            远超 RSI(14) 需要 15 桶 + EMA(21) 需要 21 桶）
+        """
         if settings.use_mock_data:
             return
-        candles_1m = list(self._candles_1m.get(pair, []))
-        if len(candles_1m) < 60:
-            await self._write_no_data(pair, timeframe, "insufficient_1m_history")
-            return
-        candles = _resample_ohlcv(candles_1m, timeframe)
-        if not candles or len(candles) < 30:
+
+        # 1h/1d 用粗粒度历史（不依赖 1m 重采样）
+        if timeframe in ("1h", "1d"):
+            candles = await self._fetch_candles_direct(pair, timeframe)
+        else:
+            candles_1m = list(self._candles_1m.get(pair, []))
+            if len(candles_1m) < 60:
+                await self._write_no_data(pair, timeframe, "insufficient_1m_history")
+                return
+            candles = _resample_ohlcv(candles_1m, timeframe)
+        if not candles or len(candles) < 21:
             await self._write_no_data(pair, timeframe, "resample_too_short")
             return
 
