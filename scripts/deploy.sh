@@ -12,7 +12,10 @@
 # 备选: SSH_TARGET=dyddd-prod (legacy 灰度) (需要 ~/.ssh/config 配好)
 # 部署路径: /opt/ai-trader/ai-trader/
 # ──────────────────────────────────────────────────────────────────────────
-set -e
+# -e: 任一命令失败立即退出
+# -x: 每条命令执行前打印 +cmd 到 stderr —— 部署中途中断时,trap 看不到 / exit code 拿不到
+#      也能立刻定位死在哪一步 (2026-10-03 pr49 教训: 之前只 set -e, 中断时 0 日志)
+set -ex
 
 SSH_TARGET="${SSH_TARGET:-kbkkk-prod}"
 # ssh 认证模式：kbkkk-prod → password / dyddd-prod → key。在 alias→IP 解析前固定下来
