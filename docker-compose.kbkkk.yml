@@ -4,7 +4,10 @@
 # 主 compose 已把 frontend ports/volumes 拆出来（本 override 各自提供），
 # 不再有 "Step 4b sed" 那种临时打补丁逻辑；重 deploy / rsync 幂等。
 # 本 override 负责:
-#   1. frontend ports: 127.0.0.1:8123->80 (纯 HTTP, loopback only, 由外部 caddy 转发)
+#   1. frontend ports: 127.0.0.1:8123->8123 (纯 HTTP, loopback only, 由外部 caddy 转发)
+#      ⚠️ 2026-10-03 修复: 之前是 8123->80，但 PR #45 把容器内 nginx 改 listen 8123 后,
+#         容器 80 没人 listen, host:8123→container:80 立即 RST → 整个站点 502
+#         改 8123:8123 后 docker-proxy 直接转 container:8123 = 容器内 nginx 在 listen
 #   2. frontend 不挂 /etc/nginx/ssl (kbkkk 用 caddy 在 host 上终结 TLS)
 #   3. frontend build args.NGINX_CONF=nginx-kbkkk.conf (纯 HTTP, 无 HTTPS 重定向)
 #   4. backend env: DATA_SOURCE=okx (kbkkk 香港 IP 被 Binance 限流, 切到 OKX 公开 API)
@@ -18,7 +21,7 @@ services:
       args:
         NGINX_CONF: nginx-kbkkk.conf
     ports:
-      - "127.0.0.1:8123:80"
+      - "127.0.0.1:8123:8123"
 
   backend:
     environment:
