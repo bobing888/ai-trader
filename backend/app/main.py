@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.analysis import router as analysis_router
+from app.api.dashboard import router as dashboard_router
 from app.api.health import router as health_router
 from app.api.klines import router as klines_router
 from app.api.notifications import router as notifications_router
@@ -136,6 +137,7 @@ def create_app() -> FastAPI:
     app.include_router(preferences_router, prefix="/api/preferences", tags=["preferences"])
     app.include_router(strategies_router, prefix="/api/strategies", tags=["strategies"])
     app.include_router(analysis_router, prefix="/api/analysis", tags=["analysis"])
+    app.include_router(dashboard_router, prefix="/api", tags=["dashboard"])
     app.include_router(ws_router, prefix="/api", tags=["ws"])
     app.include_router(notifications_router, prefix="/api", tags=["notifications"])
     # === B-Follow Step 2 ===

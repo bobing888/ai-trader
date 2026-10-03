@@ -72,6 +72,7 @@
   },
   "nav": {
     "analysis": "Analysis",
+    "dashboard": "Dashboard",
     "recommendations": "Signals",
     "trades": "Trades",
     "backtest": "Backtest",
