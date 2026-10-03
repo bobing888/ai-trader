@@ -352,12 +352,17 @@ class SignalAggregator:
             # 无足够共识信号
             return None
 
-        # v2 改进 (2026-10-03): choppy 无 trend 时,若双方都有信号但 min(比例) ≥ max/2 → 方向冲突 None
-        # 防止"1 long 0.6 vs 2 short 0.55+0.5"误选 short
+        # v2.1 改进 (2026-10-03): choppy 无 trend 时,双向都有信号时判冲突
+        # 防止"1 long 0.6 vs 2 short 0.55+0.5"误选 (choppy + 双向在场 = 整体信号弱)
+        # 例外: dominant 侧 avg_conf ≥ 1.2x 对侧 (1.143 ≤ 1.2x 失败 → None; 1.375 ≥ 1.2x → 选 dominant)
+        # 修 PR #50 回归: test_aggregator_two_strategies_picks_dominant (2 long 0.8+0.85 vs 1 short 0.6)
         if regime == Regime.CHOPPY and (adx is None or adx < 15):
             if long_count > 0 and short_count > 0:
-                if min(long_count, short_count) * 2 >= max(long_count, short_count):
-                    # 比例 1:1 或 1:2 → 都算冲突
+                # 选 dominant 侧（按 avg_conf）
+                dominant_conf = max(long_avg_conf, short_avg_conf)
+                weak_conf = min(long_avg_conf, short_avg_conf)
+                if dominant_conf < weak_conf * 1.2:
+                    # 双向在场但优势不显著 → 整体信号弱 → 返 None
                     return None
 
         fast_path = has_strong_signal and (long_count + short_count) < 2 * min_agr
