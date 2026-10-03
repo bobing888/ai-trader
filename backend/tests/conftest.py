@@ -10,6 +10,8 @@ _test_db = Path(__file__).resolve().parent.parent / "data" / "test_strategies.db
 _test_db.parent.mkdir(parents=True, exist_ok=True)
 os.environ["AI_TRADER_STRATEGIES_DB_PATH"] = str(_test_db.resolve())
 os.environ["AI_TRADER_GITHUB_SYNC_ENABLED"] = "false"  # 测试中关闭 github sync 后台任务
+# 测试期默认走 mock 数据源（避免 CI 调真 OKX/Binance 公开 API 限流）
+os.environ.setdefault("AI_TRADER_USE_MOCK_DATA", "true")
 
 import pytest
 

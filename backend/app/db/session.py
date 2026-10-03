@@ -1,5 +1,6 @@
 """SQLite 数据库 session 管理"""
 
+import os
 from collections.abc import Generator
 from pathlib import Path
 
@@ -10,10 +11,20 @@ from app.config import settings
 
 
 def _resolve_db_path() -> str:
-    """优先使用 STRATEGIES_DB_PATH 环境变量，否则用 ./data/strategies.db"""
+    """优先使用 STRATEGIES_DB_PATH 环境变量,否则按环境自动选路径:
+    - Docker 部署(/app 存在且可写): 用 /app/data/<file>
+    - Host dev: 用 cwd + repo-relative ./data/<file>(避免 ROFS /app/data)
+    """
     p = Path(settings.strategies_db_path)
-    if not p.is_absolute():
+    if p.is_absolute():
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return f"sqlite:///{p}"
+    # Docker: /app 存在且可写 → 用 /app/data
+    if Path("/app").is_dir() and os.access("/app", os.W_OK):
         p = Path("/app/data") / p
+    else:
+        # Host dev: 用 cwd + repo-relative ./data
+        p = Path.cwd() / "data" / p
     p.parent.mkdir(parents=True, exist_ok=True)
     return f"sqlite:///{p}"
 

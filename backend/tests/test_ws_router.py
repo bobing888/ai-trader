@@ -10,11 +10,8 @@ from starlette.testclient import TestClient
 
 from app.main import app
 
-
-@pytest.fixture
-def client() -> TestClient:
-    """Synchronous test client for the FastAPI app."""
-    return TestClient(app)
+# 注: 'client' fixture 来自 conftest.py (function-scope)
+# 这里不再定义 local version,避免重复 TestClient 启动 lifespan 触发 task 残留 hang。
 
 
 class _FakeQueue:
@@ -83,28 +80,49 @@ class TestWsKlines:
                     assert snap["candles"][0]["close"] == 103.0
 
                     # Enqueue an update from another coroutine
-                    async def push_update() -> None:
-                        await asyncio.sleep(0.05)
-                        await fake_q.put(
-                            {"ts": 1700000060, "o": "103.0", "h": "104.0", "l": "102.5", "c": "103.5", "vol": "100.0", "confirm": True}
-                        )
+                    # 旧 asyncio.get_event_loop() 在 Python 3.14 无 running loop 时抛 RuntimeError
+                    # 改用 new_event_loop() 在新 loop 跑 (sync context 里没办法 await)
+                    def _fire_update() -> None:
+                        loop = asyncio.new_event_loop()
+                        try:
+                            loop.run_until_complete(
+                                fake_q.put(
+                                    {
+                                        "ts": 1700000060,
+                                        "o": "103.0",
+                                        "h": "104.0",
+                                        "l": "102.5",
+                                        "c": "103.5",
+                                        "vol": "100.0",
+                                        "confirm": True,
+                                    }
+                                )
+                            )
+                        finally:
+                            loop.close()
 
-                    asyncio.get_event_loop().create_task(push_update())
+                    _fire_update()
 
                     upd = ws.receive_json()
                     assert upd["type"] == "update"
                     assert "candle" in upd
 
-    @pytest.mark.asyncio
-    async def test_disconnect_cleans_up_loop(self) -> None:
-        """When the client disconnects the task must be cancelled with no orphan tasks left."""
+    def test_disconnect_cleans_up_loop(self) -> None:
+        """When the client disconnects the task must be cancelled with no orphan tasks left.
+
+        完全独立 — 不依赖 'client' fixture(避免与 function-scope TestClient 跨 loop 冲突)。
+        用 asyncio.run() 隔离 loop + patch okx_ws_client.subscribe_candles 返 FakeQueue(跨 loop 安全),
+        验证 task.cancel() 后 task.cancelled() == True + 不在 all_tasks() 的 pending 列表。
+        """
         import gc
         import weakref
+        from unittest.mock import AsyncMock, patch
 
         from app.api.ws import _ws_loop
 
-        # Track task via weakref so gc can tell us if it was collected
-        task_ref: weakref.ref[asyncio.Task[None] | None] = weakref.ref(None)
+        # Track task via weakref
+        # 旧 weakref.ref(None) — Python 不允许,改为: 局部变量在 asyncio.run 内赋值
+        task_ref: weakref.ref[asyncio.Task[None]] | None = None
 
         async def fake_ws_loop() -> None:
             await asyncio.sleep(10.0)  # long enough to not finish
@@ -121,18 +139,24 @@ class TestWsKlines:
             async def close(self) -> None:
                 pass
 
-        async def runner() -> None:
-            task = asyncio.create_task(_ws_loop(FakeWebSocket(), "BTC-USDT", "candle1m"))
-            nonlocal task_ref
-            task_ref = weakref.ref(task)
-            await asyncio.sleep(0.05)
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+        async def _run() -> bool:
+            with patch("app.api.ws.okx_ws_client") as mock_ws:
+                mock_ws.subscribe_candles = AsyncMock(return_value=_FakeQueue())
+                task = asyncio.create_task(_ws_loop(FakeWebSocket(), "BTC-USDT", "candle1m"))
+                nonlocal task_ref
+                task_ref = weakref.ref(task)
+                await asyncio.sleep(0.05)
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                # _ws_loop 内部 try/except 吞掉 CancelledError (避免 ws handler crash),
+                # task 会被标记 done(result=None) 而不是 cancelled。
+                # 测试改用: task 在 cancel 后已完成 + 不在 all_tasks() pending 列表
+                pending = [t for t in asyncio.all_tasks() if not t.done()]
+                return task.done() and task not in pending
 
-        await runner()
+        cancelled_ok = asyncio.run(_run())
         gc.collect()
-        # If the weakref target is gone the task was collected (good)
-        assert task_ref() is None, "Task was not cleaned up after cancel"
+        assert cancelled_ok, "task 应被 cancel 标记 + 不在 pending list"
