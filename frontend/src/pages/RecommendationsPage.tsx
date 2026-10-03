@@ -23,8 +23,10 @@ import { SkeletonCard } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils";
 import {
   fetchBatchSignals,
+  fetchTickers,
   type BatchSignalItem,
   type BatchSignalsResponse,
+  type Ticker,
   type TimeframeCategory,
 } from "@/lib/api";
 import { useKlineStore } from "@/stores/klineStore";
@@ -199,6 +201,18 @@ export function RecommendationsPage() {
     staleTime: 60_000,
     refetchInterval: 120_000,
   });
+
+  // 实时市价：每 5s 拉一次 ticker（独立于 signal 120s 周期，单独快）
+  // 让用户看到"现在市价 vs AI 给的 Entry 还差多少"
+  const { data: tickers = [] } = useQuery<Ticker[], Error>({
+    queryKey: ["tickers-batch", selectedPairs],
+    queryFn: () => fetchTickers(selectedPairs),
+    staleTime: 4_000,
+    refetchInterval: 5_000,
+  });
+  const tickerMap: Record<string, Ticker> = Object.fromEntries(
+    tickers.map((t) => [t.symbol, t]),
+  );
 
   const sortedSignals = (data?.ranked ?? []).filter(
     (item: BatchSignalItem) => item.has_signal && item.signal,
@@ -378,7 +392,13 @@ export function RecommendationsPage() {
       {!isLoading && !error && sortedSignals.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {sortedSignals.map((item: BatchSignalItem) => (
-            <EnhancedSignalCard key={item.pair} item={item} timeframe={timeframeOpt.value} />
+            <EnhancedSignalCard
+              key={item.pair}
+              item={item}
+              timeframe={timeframeOpt.value}
+              currentPrice={tickerMap[item.pair]?.price}
+              priceChange24h={tickerMap[item.pair]?.change_24h}
+            />
           ))}
         </div>
       )}
@@ -422,7 +442,17 @@ function RegimeBanner({ regime }: { regime: BatchSignalsResponse["regime_global"
 
 // ─── Enhanced Signal Card ──────────────────────────────────────────────────────
 
-function EnhancedSignalCard({ item, timeframe }: { item: BatchSignalItem; timeframe: string }) {
+function EnhancedSignalCard({
+  item,
+  timeframe,
+  currentPrice,
+  priceChange24h,
+}: {
+  item: BatchSignalItem;
+  timeframe: string;
+  currentPrice?: number;
+  priceChange24h?: number;
+}) {
   const signal = item.signal!;
   const isLong = signal.direction === "long";
   const entryT1 = signal.entry_levels?.[0]?.price;
@@ -442,6 +472,40 @@ function EnhancedSignalCard({ item, timeframe }: { item: BatchSignalItem; timefr
   // 置信度进度条颜色
   const confBarColor = isLong ? "bg-bull" : "bg-bear";
   const confBarTrack = isLong ? "bg-bull/15" : "bg-bear/15";
+
+  // 距 Entry 距离（百分比）
+  // 做多：现价高于 Entry = 错过入场（红）；低于 Entry = 等回调（绿）
+  // 做空：现价低于 Entry = 错过入场（红）；高于 Entry = 等反弹（绿）
+  let distancePct: number | null = null;
+  let distanceLabel = "";
+  let distanceColor = "text-text-tertiary";
+  if (currentPrice != null && entryT1 != null && entryT1 > 0) {
+    distancePct = ((currentPrice - entryT1) / entryT1) * 100;
+    if (isLong) {
+      if (distancePct > 0.05) {
+        distanceLabel = `已错过 +${distancePct.toFixed(2)}%`;
+        distanceColor = "text-warning";
+      } else if (distancePct < -0.05) {
+        distanceLabel = `等回调 ${distancePct.toFixed(2)}%`;
+        distanceColor = "text-bull";
+      } else {
+        distanceLabel = "在入场位附近";
+        distanceColor = "text-text-secondary";
+      }
+    } else {
+      // 做空：现价 - Entry 为正 = 还没涨到 Entry（等反弹）= 好
+      if (distancePct > 0.05) {
+        distanceLabel = `等反弹 +${distancePct.toFixed(2)}%`;
+        distanceColor = "text-bear";
+      } else if (distancePct < -0.05) {
+        distanceLabel = `已错过 ${distancePct.toFixed(2)}%`;
+        distanceColor = "text-warning";
+      } else {
+        distanceLabel = "在入场位附近";
+        distanceColor = "text-text-secondary";
+      }
+    }
+  }
 
   return (
     <Card
@@ -529,6 +593,47 @@ function EnhancedSignalCard({ item, timeframe }: { item: BatchSignalItem; timefr
           >
             {confPct}%
           </span>
+        </div>
+
+        {/* ── Row 2.5: 实时市价（每 5s 跳动）──────────────────────────── */}
+        <div className="flex items-center justify-between gap-2 px-1 -mt-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[10px] uppercase tracking-wider text-text-tertiary shrink-0">
+              现价
+            </span>
+            <span
+              className={cn(
+                "text-base font-bold tabular-nums font-mono",
+                currentPrice != null ? "text-text-primary" : "text-text-tertiary",
+              )}
+              data-testid={`current-price-${item.pair}`}
+            >
+              {currentPrice != null ? currentPrice.toFixed(2) : "—"}
+            </span>
+            {priceChange24h != null && (
+              <span
+                className={cn(
+                  "text-xs font-semibold tabular-nums",
+                  priceChange24h > 0
+                    ? "text-bull"
+                    : priceChange24h < 0
+                      ? "text-bear"
+                      : "text-text-tertiary",
+                )}
+              >
+                {priceChange24h > 0 ? "+" : ""}
+                {priceChange24h.toFixed(2)}%
+              </span>
+            )}
+          </div>
+          {distancePct != null && (
+            <span
+              className={cn("text-xs font-semibold tabular-nums shrink-0", distanceColor)}
+              data-testid={`distance-${item.pair}`}
+            >
+              {distanceLabel}
+            </span>
+          )}
         </div>
 
         {/* ── Row 3: 价格区 (Entry / SL / TP) — 3 列等宽大字号 ────────── */}

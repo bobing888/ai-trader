@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { X, Loader2, ArrowUpDown, Shield, Target, Wallet, Zap, TrendingUpDown } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -130,7 +131,11 @@ export function FollowDialog(props: FollowDialogProps) {
   const qualityCfg = quality ? QUALITY_BADGE[quality] : null;
   const showD1 = atr != null;
 
-  return (
+  // 用 Portal 渲染到 body，脱离任何祖先的 transform/filter/will-change 影响。
+  // 修：RecommendationsPage 的 Card 有 hover:-translate-y-0.5，会让 fixed 定位
+  // 的 backdrop 跟着卡片一起抖动；backdrop-blur 还会创建新的 stacking context。
+  // Portal 让 dialog 永远挂在 <body> 下，fixed 永远相对视口，hover 不再触发重绘。
+  const dialog = (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur"
       data-testid="follow-dialog"
@@ -304,6 +309,8 @@ export function FollowDialog(props: FollowDialogProps) {
       </div>
     </div>
   );
+
+  return createPortal(dialog, document.body);
 }
 
 function Field(props: {
