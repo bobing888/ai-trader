@@ -38,10 +38,6 @@ export type OverviewResponse = z.infer<typeof OverviewResponseSchema>;
 export const DASHBOARD_DEFAULT_SYMBOLS = [
   "BTC-USDT",
   "ETH-USDT",
-  "SOL-USDT",
-  "BNB-USDT",
-  "XRP-USDT",
-  "DOGE-USDT",
 ] as const;
 
 export async function fetchDashboardOverview(

@@ -75,8 +75,9 @@ class Settings(BaseSettings):
     # 推荐扫描周期（秒）— OKX WS 1m K 线 confirm 触发
     recommendation_scan_interval: int = 60
     # 监控的 pair 列表（OKX 形态：BTC-USDT）
+    # 2026-10-03 用户要求：只跑 BTC + ETH 主流币，砍掉 SOL/BNB/DOGE/XRP
     recommendation_pairs: list[str] = [
-        "BTC-USDT", "ETH-USDT", "SOL-USDT", "BNB-USDT", "DOGE-USDT", "XRP-USDT",
+        "BTC-USDT", "ETH-USDT",
     ]
     # 监控的 timeframe（recorder 本地重采样 1m 到目标）
     recommendation_timeframes: list[str] = ["5m", "15m", "1h", "1d"]

@@ -31,7 +31,7 @@ import {
 } from "@/lib/api";
 import { useKlineStore } from "@/stores/klineStore";
 
-const DEFAULT_PAIRS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT"];
+const DEFAULT_PAIRS = ["BTCUSDT", "ETHUSDT"];
 
 // v2: 4 档分类（超短线/短线/中线/长线）
 type RawTimeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";

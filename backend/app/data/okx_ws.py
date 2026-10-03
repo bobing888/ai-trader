@@ -1,4 +1,9 @@
-"""OKX V5 Public WebSocket Client — 无需 API key，仅限公开行情 channel。"""
+"""OKX V5 Public WebSocket Client — 无需 API key，可订阅 public + business 公开行情 channel。
+
+Note: 自 2023-06-20 起 OKX 把 candlestick / index- / 部分 algo 频道从 /ws/v5/public
+迁移到 /ws/v5/business。所以这里统一连 business endpoint，public 频道也能用。
+详见 https://www.okx.com/help-center/changes-to-v5-api-websocket-subscription-parameter-and-url
+"""
 
 from __future__ import annotations
 
@@ -17,11 +22,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# OKX V5 public WebSocket endpoint
-WS_URL = "wss://ws.okx.com:8443/ws/v5/public"
+# OKX V5 business WebSocket endpoint（兼容 public 频道 + candle 频道）
+WS_URL = "wss://ws.okx.com:8443/ws/v5/business"
 
-# KBKKK 监控默认币种（不在 settings 中硬编码，直接用）
-DEFAULT_PAIRS = ["BTC-USDT", "ETH-USDT", "SOL-USDT", "BNB-USDT", "DOGE-USDT"]
+# KBKKK 监控默认币种（2026-10-03 用户决定：只跑主流币 BTC + ETH）
+DEFAULT_PAIRS = ["BTC-USDT", "ETH-USDT"]
 
 HEARTBEAT_INTERVAL = 25  # 秒，OKX 要求 30s 内有操作则自动 ping
 MAX_RECONNECT_DELAY = 30  # 最大重连退避秒数
