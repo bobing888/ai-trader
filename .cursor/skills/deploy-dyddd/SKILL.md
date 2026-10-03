@@ -342,7 +342,7 @@ done
 
 # 4. 验证（curl 至少 2 个 endpoint）
 curl -s https://dyddd.com/api/health
-curl -s 'https://dyddd.com/api/signals?symbol=BTC-USDT&timeframe=1h' | python3 -m json.tool 2>&1 | head -20
+curl -s 'https://dyddd.com/api/signals/recommend/BTC-USDT?timeframe=1h' | python3 -m json.tool 2>&1 | head -20
 
 # 5. 报告：PR #N + commit + 部署结果 + 线上验证
 ```

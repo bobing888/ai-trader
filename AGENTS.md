@@ -249,7 +249,7 @@
 1. **PR merge 完成** → agent 检测到「merged into main」（通过 `gh pr view --json state,mergedAt` 或 git log 显示新的 merge commit 在 main 上）
 2. **拉取最新 main** → `git checkout main && git pull --ff-only origin main`
 3. **立刻自动执行部署** → `bash scripts/deploy.sh`（用 `block_until_ms: 0` 后台跑，自己轮询）
-4. **部署成功后验证** → curl `https://dyddd.com/api/health` + 至少一个 `https://dyddd.com/api/signals?...` 接口
+4. **部署成功后验证** → curl `https://dyddd.com/api/health` + 至少一个 `https://dyddd.com/api/signals/recommend/BTC-USDT?timeframe=1h` 接口
 5. **回报**：「PR #N 已合入 + 已部署 + 线上已可见新功能」
 
 **禁止**：
