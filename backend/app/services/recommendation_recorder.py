@@ -192,7 +192,10 @@ class RecommendationRecorder:
             )
 
     def _compute_signal(self, pair: str, timeframe: str, candles: list[dict]):
-        """调 aggregator。同步（不 await）。"""
+        """调 aggregator。同步（不 await）。
+
+        D1: 传 candles + current_price 让 aggregator 算 ATR + entry levels.
+        """
         from app.signals.aggregator import SignalAggregator
         from app.signals.regime import RegimeDetector
         from app.signals.strategy_pool import STRATEGY_INSTANCES
@@ -202,12 +205,41 @@ class RecommendationRecorder:
             s.evaluate(candles, pair=pair, timeframe=timeframe)
             for s in STRATEGY_INSTANCES
         ]
+
+        # D1: 转成 aggregator 期望的字段名 (open/high/low/close + open_time)
+        ohlcv_for_agg = self._to_ohlcv(candles)
+        current_price = candles[-1]["c"] if candles else None
         return SignalAggregator().aggregate(
             strategy_results,
             regime_info.regime,
             regime_info.confidence,
             timeframe,
+            candles_dict={pair: ohlcv_for_agg},
+            current_price={pair: current_price},
         )
+
+    @staticmethod
+    def _to_ohlcv(candles: list[dict]) -> list[dict]:
+        """把 resampled {ts, o, h, l, c, vol} 转 aggregator 期望的 {open, high, low, close, open_time, volume}."""
+        from datetime import UTC, datetime
+        out = []
+        for c in candles:
+            ts_ms = c.get("ts", 0)
+            try:
+                ot = datetime.fromtimestamp(ts_ms / 1000.0, tz=UTC)
+            except Exception:
+                ot = datetime.now(UTC)
+            out.append(
+                {
+                    "open_time": ot,
+                    "open": float(c.get("o", 0.0)),
+                    "high": float(c.get("h", 0.0)),
+                    "low": float(c.get("l", 0.0)),
+                    "close": float(c.get("c", 0.0)),
+                    "volume": float(c.get("vol", 0.0)),
+                }
+            )
+        return out
 
     def _build_record(self, pair: str, timeframe: str, signal) -> RecommendationHistory:
         from app.db.models import RecommendationHistory, RecommendationOutcome
@@ -244,6 +276,24 @@ class RecommendationRecorder:
             outcome=RecommendationOutcome.HAS_SIGNAL.value,
             scanned_at=datetime.now(UTC),
             source="okx",
+            # Phase 1
+            calibrated_confidence=signal.calibrated_confidence,
+            net_pnl_estimate=signal.net_pnl_estimate,
+            # D1: executable levels
+            entry_levels_json=json.dumps(signal.entry_levels) if signal.entry_levels else None,
+            stop_loss_price=signal.stop_loss_price,
+            take_profit_1_price=signal.take_profit_1_price,
+            take_profit_2_price=signal.take_profit_2_price,
+            atr=signal.atr,
+            risk_reward_ratio=signal.risk_reward_ratio,
+            current_price=(
+                signal.entry_levels[0]["price"] if signal.entry_levels else None
+            ),
+            # D2: quality gate
+            quality=signal.quality,
+            quality_reasons_json=(
+                json.dumps(signal.quality_reasons) if signal.quality_reasons else None
+            ),
         )
 
     async def _write_no_data(self, pair: str, timeframe: str, reason: str) -> None:

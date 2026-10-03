@@ -13,6 +13,8 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.services.follow_scheduler import ExitVerdict, FollowScheduler
 
 
@@ -22,6 +24,18 @@ class _FakeFollow:
         self.stop_loss = stop_loss
         self.target = target
         self.entry_time = datetime.now(UTC) - timedelta(hours=hours_ago)
+        # D3 defaults — scheduler needs these to evaluate trailing stop
+        self.entry_atr = None
+        self.entry_price = None
+        self.trailing_stop_enabled = 0
+        self.partial_tp_enabled = 0
+        self.current_stop_loss = stop_loss
+        self.take_profit_1_price = None
+        self.take_profit_2_price = None
+        self.partial_tp_taken = 0
+        self.remaining_size_pct = 1.0
+        self.entry_price_ref = None
+        self.risk_reward_ratio = None
 
 
 def test_stop_loss_triggers_long():
@@ -148,3 +162,43 @@ def test_signal_reversal_returns_false_when_current_none():
     verdict = FollowScheduler._evaluate_signal_reversal(follow, None, None, [])
     assert verdict.should_exit is False
     assert verdict.reason is None
+
+
+# === Step 3-C: _default_price_source 处理 OKX ticker 真实形状 ===
+
+
+@pytest.mark.asyncio
+async def test_default_price_source_reads_price_key():
+    """OKX ticker 真实形状: {\"price\": 85777.5, \"change_24h\": ...}, 不是 {\"last\": ...}"""
+    from app.data import okx
+    from app.services import follow_scheduler as fs
+
+    async def fake_get_ticker(pair):
+        return {"price": 85777.5, "change_24h": 2.67}
+
+    # monkeypatch okx_client.get_ticker
+    original = okx.okx_client.get_ticker
+    okx.okx_client.get_ticker = fake_get_ticker
+    try:
+        price = await fs._default_price_source("BTC-USDT")
+    finally:
+        okx.okx_client.get_ticker = original
+    assert price == 85777.5
+
+
+@pytest.mark.asyncio
+async def test_default_price_source_handles_empty_ticker():
+    """空 ticker (network down) → 返回 None, scheduler skip."""
+    from app.data import okx
+    from app.services import follow_scheduler as fs
+
+    async def fake_get_ticker(pair):
+        return None
+
+    original = okx.okx_client.get_ticker
+    okx.okx_client.get_ticker = fake_get_ticker
+    try:
+        price = await fs._default_price_source("BTC-USDT")
+    finally:
+        okx.okx_client.get_ticker = original
+    assert price is None

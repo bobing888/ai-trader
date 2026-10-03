@@ -34,7 +34,8 @@ describe("App", () => {
       Array.from(document.querySelectorAll(`[data-testid]`)).filter(
         (el) => el.getAttribute("data-testid")?.includes(id) ?? false,
       );
-    expect(findByTestIdSubstr("nav-kline").length).toBeGreaterThan(0);
+    expect(findByTestIdSubstr("nav-dashboard").length).toBeGreaterThan(0);
+    expect(findByTestIdSubstr("nav-analysis").length).toBeGreaterThan(0);
     expect(findByTestIdSubstr("nav-rec").length).toBeGreaterThan(0);
     expect(findByTestIdSubstr("nav-trades").length).toBeGreaterThan(0);
     expect(findByTestIdSubstr("nav-backtest").length).toBeGreaterThan(0);

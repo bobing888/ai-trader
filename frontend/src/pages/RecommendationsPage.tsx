@@ -6,13 +6,13 @@ import {
   AlertTriangle,
   ArrowUpDown,
   BarChart2,
-  Gauge,
   RefreshCw,
   Shield,
   Sparkles,
   Target,
   TrendingDown,
   TrendingUp,
+  Wallet,
   Zap,
 } from "lucide-react";
 
@@ -143,86 +143,7 @@ function PageSummaryBar({ items }: { items: BatchSignalItem[] }) {
   );
 }
 
-// ─── Direction Badge ───────────────────────────────────────────────────────────
-
-function DirectionBadge({ direction }: { direction: "long" | "short" }) {
-  const isLong = direction === "long";
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xl font-bold tracking-tight min-w-[80px] justify-center",
-        isLong
-          ? "bg-bull/15 text-bull border-2 border-bull/30"
-          : "bg-bear/15 text-bear border-2 border-bear/30",
-      )}
-    >
-      {isLong ? (
-        <TrendingUp className="w-6 h-6" />
-      ) : (
-        <TrendingDown className="w-6 h-6" />
-      )}
-      {isLong ? "做多" : "做空"}
-    </div>
-  );
-}
-
-// ─── Confidence Ring ──────────────────────────────────────────────────────────
-
-function ConfidenceRing({ confidence, direction }: { confidence: number; direction: "long" | "short" }) {
-  const pct = Math.round(confidence * 100);
-  const isLong = direction === "long";
-  const color = isLong ? "#22c55e" : "#ef4444";
-  const r = 22;
-  const circumference = 2 * Math.PI * r;
-  const strokeDashoffset = circumference * (1 - confidence);
-
-  let levelLabel: string;
-  let levelColor: string;
-  if (pct >= 70) {
-    levelLabel = "强";
-    levelColor = isLong ? "text-bull" : "text-bear";
-  } else if (pct >= 50) {
-    levelLabel = "中";
-    levelColor = "text-warning";
-  } else {
-    levelLabel = "弱";
-    levelColor = "text-text-secondary";
-  }
-
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="relative w-14 h-14">
-        {/* Background circle */}
-        <svg className="w-full h-full -rotate-90" viewBox="0 0 56 56">
-          <circle
-            cx="28"
-            cy="28"
-            r={r}
-            fill="none"
-            stroke="rgba(255,240,220,0.08)"
-            strokeWidth="5"
-          />
-          <circle
-            cx="28"
-            cy="28"
-            r={r}
-            fill="none"
-            stroke={color}
-            strokeWidth="5"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={strokeDashoffset}
-            style={{ transition: "stroke-dashoffset 0.6s ease" }}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className={cn("text-sm font-bold tabular-nums", levelColor)}>{pct}%</span>
-        </div>
-      </div>
-      <span className={cn("text-[10px] font-medium", levelColor)}>{levelLabel}信号</span>
-    </div>
-  );
-}
+// ─── Direction Badge (inlined into EnhancedSignalCard) ────────────────────────
 
 // ─── Regime Tag ───────────────────────────────────────────────────────────────
 
@@ -239,48 +160,6 @@ const REGIME_CONFIG: Record<
 function RegimeTag({ regime }: { regime: string | undefined }) {
   const cfg = REGIME_CONFIG[regime ?? ""] ?? REGIME_CONFIG.choppy;
   return <Badge tone={cfg.tone}>{cfg.label}</Badge>;
-}
-
-// ─── v2: Leverage Badge ───────────────────────────────────────────────────────
-
-function LeverageBadge({ leverage, timeframeCategory }: {
-  leverage: number;
-  timeframeCategory: TimeframeCategory | undefined;
-}) {
-  if (!timeframeCategory || timeframeCategory === "long") return null;
-
-  const isHighLeverage = leverage >= 3;
-  const isMidLeverage = leverage === 2;
-
-  return (
-    <Badge
-      tone={isHighLeverage ? "warning" : isMidLeverage ? "info" : "default"}
-      className="text-[10px] font-bold tabular-nums"
-    >
-      <Zap className="w-2.5 h-2.5 mr-0.5" />
-      {leverage}x
-    </Badge>
-  );
-}
-
-// ─── v2: Trend Strength (ADX) Indicator ───────────────────────────────────────
-
-function TrendStrengthBadge({ adx, label }: {
-  adx: number | null | undefined;
-  label: string | null | undefined;
-}) {
-  if (adx == null || label == null) return null;
-
-  let tone: "bull" | "warning" | "default" = "default";
-  if (adx >= 30) tone = "bull";
-  else if (adx >= 20) tone = "warning";
-
-  return (
-    <Badge tone={tone} className="text-[10px]">
-      <Gauge className="w-2.5 h-2.5 mr-0.5" />
-      ADX {adx.toFixed(0)} · {label}
-    </Badge>
-  );
 }
 
 // ─── v2: Fast-path Indicator ──────────────────────────────────────────────────
@@ -301,73 +180,6 @@ function TimeframeTag({ timeframe }: { timeframe: string | undefined }) {
     <Badge tone="info" className="text-[11px]">
       {timeframe ?? "—"}
     </Badge>
-  );
-}
-
-// ─── Signal Reasons ───────────────────────────────────────────────────────────
-
-function SignalReasons({ reasons }: { reasons: string[] }) {
-  const display = reasons.slice(0, 5);
-  return (
-    <div className="space-y-1">
-      {display.map((r, i) => (
-        <div key={i} className="flex items-start gap-1.5">
-          <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-          <span className="text-xs text-text-secondary leading-relaxed">{r}</span>
-        </div>
-      ))}
-      {reasons.length > 5 && (
-        <span className="text-[10px] text-text-tertiary pl-3.5">+{reasons.length - 5} 条</span>
-      )}
-    </div>
-  );
-}
-
-// ─── Risk Bar ─────────────────────────────────────────────────────────────────
-
-function RiskBar({ item }: { item: BatchSignalItem }) {
-  const signal = item.signal!;
-  return (
-    <div className="rounded-xl bg-bg-tertiary/50 border border-[rgba(255,240,220,0.06)] px-3 py-2 space-y-1">
-      <div className="text-[10px] font-medium uppercase tracking-wider text-text-tertiary mb-1.5">
-        风险指标
-      </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-        {signal.entry_zones[0] && (
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] text-text-tertiary">入场</span>
-            <span className="text-xs font-medium text-text-primary tabular-nums">
-              {signal.entry_zones[0].replace(/\s+/g, " ").trim() || "—"}
-            </span>
-          </div>
-        )}
-        {signal.risk_warnings[0] && (
-          <div className="flex justify-between items-center">
-            <span className="text-[10px] text-text-tertiary">风险</span>
-            <span className="text-[10px] text-warning">{signal.risk_warnings[0]}</span>
-          </div>
-        )}
-        <div className="flex justify-between items-center">
-          <span className="text-[10px] text-text-tertiary">置信度</span>
-          <span
-            className={cn(
-              "text-xs font-semibold tabular-nums",
-              signal.confidence >= 0.6
-                ? "text-bull"
-                : signal.confidence <= 0.4
-                  ? "text-bear"
-                  : "text-warning",
-            )}
-          >
-            {(signal.confidence * 100).toFixed(0)}%
-          </span>
-        </div>
-        <div className="flex justify-between items-center">
-          <span className="text-[10px] text-text-tertiary">市态</span>
-          <RegimeTag regime={signal.regime} />
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -613,134 +425,208 @@ function RegimeBanner({ regime }: { regime: BatchSignalsResponse["regime_global"
 function EnhancedSignalCard({ item, timeframe }: { item: BatchSignalItem; timeframe: string }) {
   const signal = item.signal!;
   const isLong = signal.direction === "long";
+  const entryT1 = signal.entry_levels?.[0]?.price;
+  const sl = signal.stop_loss_price ?? null;
+  const tp1 = signal.take_profit_1_price ?? null;
+  const tp2 = signal.take_profit_2_price ?? null;
+  const confPct = Math.round(signal.confidence * 100);
+  const leverage = signal.suggested_leverage ?? 1;
+
+  // 跟单 dialog state（卡片内直接管理）
+  const [followOpen, setFollowOpen] = useState(false);
+  // OKX 形态 (BTC-USDT) → binance 形态 (BTCUSDT) 转换
+  const okxPair = item.pair.endsWith("USDT")
+    ? item.pair.replace(/USDT$/, "-USDT")
+    : item.pair;
+
+  // 置信度进度条颜色
+  const confBarColor = isLong ? "bg-bull" : "bg-bear";
+  const confBarTrack = isLong ? "bg-bull/15" : "bg-bear/15";
 
   return (
-    <Card className={cn(
-      "transition-all hover:border-[rgba(255,240,220,0.15)]",
-      isLong ? "border-l-2 border-l-bull/40" : "border-l-2 border-l-bear/40",
-    )}>
-      <CardBody className="space-y-3">
-        {/* ── Section A: Direction + Confidence (visual intensity zone) ── */}
-        <div className="flex items-center justify-between gap-3">
-          {/* Large direction badge */}
-          <DirectionBadge direction={signal.direction} />
-
-          {/* Pair + tags */}
-          <div className="flex flex-col items-end gap-1.5">
-            <div className="text-sm font-bold text-text-primary">{item.pair}</div>
-            <div className="flex items-center gap-1.5 flex-wrap justify-end">
-              <RegimeTag regime={signal.regime} />
+    <Card
+      data-testid={`signal-card-${item.pair}`}
+      className={cn(
+        "transition-all hover:border-[rgba(255,240,220,0.2)] hover:-translate-y-0.5",
+        "border-t-[3px]",
+        isLong ? "border-t-bull" : "border-t-bear",
+      )}
+    >
+      <CardBody className="p-5 space-y-4">
+        {/* ── Row 1: Pair + Direction badge ─────────────────────────────── */}
+        <div className="flex items-start justify-between gap-3">
+          {/* Pair + timeframe + regime */}
+          <div className="flex flex-col gap-1.5 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-text-primary tracking-tight leading-none">
+                {item.pair.replace("USDT", "/USDT")}
+              </span>
               <TimeframeTag timeframe={timeframe} />
-              {/* v2: 杠杆标识（仅超短线/短线显示） */}
-              <LeverageBadge
-                leverage={signal.suggested_leverage ?? 1}
-                timeframeCategory={signal.timeframe_category}
-              />
-              {/* v2: fast-path 标识 */}
-              {signal.fast_path && <FastPathBadge />}
             </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <RegimeTag regime={signal.regime} />
+              {signal.fast_path && <FastPathBadge />}
+              {signal.timeframe_category &&
+                signal.timeframe_category !== "long" && (
+                  <span className="inline-flex items-center gap-0.5 h-6 px-2.5 rounded-full text-[11px] font-bold tabular-nums bg-warning/10 text-warning border border-warning/20">
+                    <Zap className="w-3 h-3" />
+                    {leverage}x
+                  </span>
+                )}
+              {signal.quality && signal.quality !== "reject" && (
+                <Badge
+                  tone={
+                    signal.quality === "high"
+                      ? "bull"
+                      : signal.quality === "medium"
+                        ? "warning"
+                        : "bear"
+                  }
+                  className="text-[11px]"
+                >
+                  {signal.quality === "high"
+                    ? "高质"
+                    : signal.quality === "medium"
+                      ? "中质"
+                      : "低质"}
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Direction pill — 视觉焦点 */}
+          <div
+            className={cn(
+              "shrink-0 flex items-center gap-2 py-2.5 px-4 rounded-xl text-2xl font-extrabold tracking-tight",
+              isLong
+                ? "bg-bull/15 text-bull ring-1 ring-bull/30"
+                : "bg-bear/15 text-bear ring-1 ring-bear/30",
+            )}
+          >
+            {isLong ? (
+              <TrendingUp className="w-7 h-7" />
+            ) : (
+              <TrendingDown className="w-7 h-7" />
+            )}
+            {isLong ? "做多" : "做空"}
           </div>
         </div>
 
-        {/* Confidence ring */}
-        <div className="flex justify-center">
-          <ConfidenceRing confidence={signal.confidence} direction={signal.direction} />
-        </div>
-
-        {/* v2: ADX 趋势强度（如果是 regime 信息有 ADX） */}
-        {item.regime?.adx != null && item.regime?.trend_strength_label && (
-          <div className="flex justify-center">
-            <TrendStrengthBadge
-              adx={item.regime.adx}
-              label={item.regime.trend_strength_label}
+        {/* ── Row 2: Confidence bar (单行大字号) ──────────────────────── */}
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-text-tertiary shrink-0">置信度</span>
+          <div className={cn("flex-1 h-2 rounded-full overflow-hidden", confBarTrack)}>
+            <div
+              className={cn("h-full rounded-full transition-all duration-700", confBarColor)}
+              style={{ width: `${confPct}%` }}
             />
           </div>
-        )}
+          <span
+            className={cn(
+              "text-xl font-bold tabular-nums shrink-0 min-w-[3.5rem] text-right",
+              confPct >= 60 ? (isLong ? "text-bull" : "text-bear") : "text-warning",
+            )}
+          >
+            {confPct}%
+          </span>
+        </div>
 
-        {/* ── Section B: Signal reasons summary ── */}
-        {signal.reasons.length > 0 && (
-          <div>
-            <div className="text-[10px] font-medium uppercase tracking-wider text-text-tertiary mb-1.5">
-              信号摘要
+        {/* ── Row 3: 价格区 (Entry / SL / TP) — 3 列等宽大字号 ────────── */}
+        <div className="grid grid-cols-3 gap-2">
+          {/* Entry */}
+          <div className="rounded-lg bg-bg-tertiary/60 border border-[rgba(255,240,220,0.06)] px-3 py-2.5">
+            <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-text-tertiary mb-1">
+              <Wallet className="w-3 h-3" />
+              入场
             </div>
-            <SignalReasons reasons={signal.reasons} />
+            <div className="text-xl font-bold text-text-primary tabular-nums leading-tight font-mono">
+              {entryT1 ? entryT1.toFixed(2) : "—"}
+            </div>
+          </div>
+          {/* SL */}
+          <div className="rounded-lg bg-bg-tertiary/60 border border-bear/20 px-3 py-2.5">
+            <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-bear/80 mb-1">
+              <Shield className="w-3 h-3" />
+              止损
+            </div>
+            <div className="text-xl font-bold text-bear tabular-nums leading-tight font-mono">
+              {sl != null ? sl.toFixed(2) : "—"}
+            </div>
+          </div>
+          {/* TP1 */}
+          <div className="rounded-lg bg-bg-tertiary/60 border border-bull/20 px-3 py-2.5">
+            <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-bull/80 mb-1">
+              <Target className="w-3 h-3" />
+              止盈
+            </div>
+            <div className="text-xl font-bold text-bull tabular-nums leading-tight font-mono">
+              {tp1 != null ? tp1.toFixed(2) : "—"}
+            </div>
+          </div>
+        </div>
+
+        {/* TP2 (optional, 单行展开，避免占满3列时挤压) */}
+        {tp2 != null && (
+          <div className="flex items-center justify-between text-xs px-1">
+            <span className="text-text-tertiary">TP2（远端止盈）</span>
+            <span className="font-mono font-semibold text-bull tabular-nums">
+              {tp2.toFixed(2)}
+            </span>
           </div>
         )}
 
-        {/* Contributing strategies */}
-        {signal.contributing_strategies.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {signal.contributing_strategies.map((s) => (
-              <Badge key={s} tone="default" className="text-[10px]">
-                {s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-              </Badge>
-            ))}
-          </div>
-        )}
+        {/* ── Row 4: CTA 跟单按钮（主行动） ───────────────────────────── */}
+        <button
+          onClick={() => setFollowOpen(true)}
+          data-testid={`follow-btn-${item.pair}-${timeframe}`}
+          className={cn(
+            "w-full py-3 rounded-xl text-base font-bold tracking-wide",
+            "transition-all active:scale-[0.98]",
+            isLong
+              ? "bg-bull text-black hover:brightness-110"
+              : "bg-bear text-white hover:brightness-110",
+          )}
+        >
+          跟单 {isLong ? "做多" : "做空"} →
+        </button>
 
-        {/* ── Section C: Risk bar ── */}
-        <RiskBar item={item} />
+        {/* FollowDialog：卡片内直接管理 */}
+        <FollowDialog
+          isOpen={followOpen}
+          onClose={() => setFollowOpen(false)}
+          pair={okxPair}
+          timeframe={timeframe}
+          direction={signal.direction}
+          recommendedLeverage={leverage}
+          entryLevels={signal.entry_levels}
+          stopLossPrice={signal.stop_loss_price}
+          takeProfit1Price={signal.take_profit_1_price}
+          takeProfit2Price={signal.take_profit_2_price}
+          atr={signal.atr}
+          riskRewardRatio={signal.risk_reward_ratio}
+          quality={signal.quality}
+        />
 
-        {/* ── Footer ── */}
-        <div className="flex items-center justify-between pt-1 border-t border-[rgba(255,240,220,0.06)]">
-          <div className="flex items-center gap-1 text-[10px] text-text-tertiary">
-            <Shield className="w-3 h-3" />
-            市态置信 {signal.regime_confidence > 0 ? `${(signal.regime_confidence * 100).toFixed(0)}%` : "—"}
-          </div>
-          <div className="text-[10px] text-text-tertiary tabular-nums">
+        {/* ── Row 5: 微信息（时间戳，市态置信） ───────────────────────── */}
+        <div className="flex items-center justify-between text-[11px] text-text-tertiary pt-1">
+          <span>
+            市态置信{" "}
+            {signal.regime_confidence > 0
+              ? `${(signal.regime_confidence * 100).toFixed(0)}%`
+              : "—"}
+          </span>
+          <span className="tabular-nums">
             {new Date(signal.generated_at).toLocaleTimeString("zh-CN", {
               hour: "2-digit",
               minute: "2-digit",
             })}
-          </div>
+          </span>
         </div>
-        {/* Follow button */}
-        <FollowButton
-          pair={item.pair}
-          timeframe={timeframe}
-          direction={signal.direction}
-          leverage={signal.suggested_leverage ?? 1}
-        />
       </CardBody>
     </Card>
   );
 }
 
-// ─── Follow Button (B-Follow Step 2) ─────────────────────────────────────────
-
-function FollowButton({
-  pair,
-  timeframe,
-  direction,
-  leverage,
-}: {
-  pair: string;
-  timeframe: string;
-  direction: "long" | "short";
-  leverage: number;
-}) {
-  const [open, setOpen] = useState(false);
-
-  // OKX 形态 (BTC-USDT) → binance 形态 (BTCUSDT) 转换 (recommendation 默认用 binance)
-  const okxPair = pair.endsWith("USDT") ? pair.replace(/USDT$/, "-USDT") : pair;
-
-  return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        data-testid={`follow-btn-${pair}-${timeframe}`}
-        className="w-full py-2 mt-2 rounded bg-emerald-600 hover:bg-emerald-500 text-xs font-medium"
-      >
-        跟单 →
-      </button>
-      <FollowDialog
-        isOpen={open}
-        onClose={() => setOpen(false)}
-        pair={okxPair}
-        timeframe={timeframe}
-        direction={direction}
-        recommendedLeverage={leverage}
-      />
-    </>
-  );
-}
+// ─── Follow Button (legacy — 已合并进 EnhancedSignalCard 内联) ────────────────
+// (代码已内联到 EnhancedSignalCard，保留此 marker 以便 git history)
+// ──────────────────────────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ import { CommandPaletteProvider } from "@/components/ui/CommandPalette";
 import { ToastProvider } from "@/components/ui/Toast";
 import { AnalysisPage } from "@/pages/AnalysisPage";
 import { BacktestPage } from "@/pages/BacktestPage";
+import { DashboardPage } from "@/pages/DashboardPage";
 import { FollowsPage } from "@/pages/FollowsPage";
 import { FuturesPage } from "@/pages/FuturesPage";
 import { KlinePage } from "@/pages/KlinePage";
@@ -24,7 +25,8 @@ export default function App() {
             <CommandPaletteProvider>
               <AppLayout>
                 <Routes>
-                  <Route path="/" element={<AnalysisPage />} />
+                  <Route path="/" element={<DashboardPage />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/analysis" element={<AnalysisPage />} />
                   <Route path="/recommendations" element={<RecommendationsPage />} />
                   <Route path="/trades" element={<TradesPage />} />

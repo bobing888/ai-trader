@@ -7,6 +7,7 @@ import {
   ChevronRight,
   History,
   Layers,
+  LayoutDashboard,
   Receipt,
   Repeat,
   Settings as SettingsIcon,
@@ -89,7 +90,10 @@ export function Sidebar({ onClose, collapsed = false, onToggleCollapse }: Sideba
       <nav className="flex-1 overflow-y-auto">
         <div className={cn("py-2 overflow-hidden", collapsed ? "px-1" : "px-3")}>
           <div className={cn("space-y-1", collapsed ? "flex flex-col items-center" : "")}>
-            <SidebarNavItem to="/" testId="nav-analysis nav-kline" icon={Layers} end collapsed={collapsed}>
+            <SidebarNavItem to="/" testId="nav-dashboard" icon={LayoutDashboard} end collapsed={collapsed}>
+              {t("nav.dashboard")}
+            </SidebarNavItem>
+            <SidebarNavItem to="/analysis" testId="nav-analysis" icon={Layers} collapsed={collapsed}>
               {t("nav.analysis")}
             </SidebarNavItem>
             <SidebarNavItem

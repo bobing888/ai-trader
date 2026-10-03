@@ -21,8 +21,9 @@ RUN pip install --no-cache-dir \
     "aiosqlite>=0.20.0" \
     "sqlalchemy>=2.0.30"
 
-# Copy app
+# Copy app + scripts
 COPY app/ ./app/
+COPY scripts/ ./scripts/
 
 # Health check
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \

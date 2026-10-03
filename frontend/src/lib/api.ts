@@ -163,6 +163,23 @@ export interface RecommendationSignal {
   suggested_leverage?: number;
   min_agreement_used?: number;
   fast_path?: boolean;
+  // D1: actionable execution levels
+  entry_levels?: EntryLevel[];
+  stop_loss_price?: number | null;
+  take_profit_1_price?: number | null;
+  take_profit_2_price?: number | null;
+  atr?: number | null;
+  risk_reward_ratio?: number | null;
+  current_price?: number | null;
+  // D2: quality gate
+  quality?: "high" | "medium" | "low" | "reject" | null;
+  quality_reasons?: string[];
+}
+
+export interface EntryLevel {
+  price: number;
+  size_pct: number;
+  label: string;
 }
 
 export interface SignalResponse {
@@ -311,6 +328,18 @@ export interface UserFollow {
   exit_reason: string | null;
   source: string;
   notes: string | null;
+  // D3: trailing stop + partial TP
+  trailing_stop_enabled: boolean;
+  partial_tp_enabled: boolean;
+  current_stop_loss: number | null;
+  take_profit_1_price: number | null;
+  take_profit_2_price: number | null;
+  entry_atr: number | null;
+  partial_tp_taken: number;
+  remaining_size_pct: number;
+  entry_price_ref: number | null;
+  // D1: persisted from recommendation (optional — not all follows have it)
+  risk_reward_ratio: number | null;
 }
 
 export interface UserFollowListResponse {
@@ -344,12 +373,26 @@ export async function createFollow(payload: {
   source?: string;
   recommendation_id?: number | null;
   notes?: string | null;
+  // D3
+  trailing_stop_enabled?: boolean;
+  partial_tp_enabled?: boolean;
+  take_profit_1_price?: number | null;
+  take_profit_2_price?: number | null;
+  entry_atr?: number | null;
+  remaining_size_pct?: number;
 }): Promise<UserFollow> {
   const { data } = await apiClient.post<UserFollow>("/follows", payload);
   return data;
 }
 
-export async function closeFollow(id: number, payload: { exit_price: number; exit_reason?: string | null }): Promise<UserFollow> {
+export async function closeFollow(
+  id: number,
+  payload: {
+    exit_price: number;
+    exit_reason?: string | null;
+    exit_size_pct?: number; // D3: partial TP
+  },
+): Promise<UserFollow> {
   const { data } = await apiClient.post<UserFollow>(`/follows/${id}/close`, payload);
   return data;
 }
