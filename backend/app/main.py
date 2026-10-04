@@ -108,6 +108,7 @@ async def lifespan(app: FastAPI):
     # 5m 循环 — 8 calls per cycle (BTC + ETH × 4 timeframe)
     # 没 DEEPSEEK_API_KEY 时 runner 会跑 cycle 但全 FALLBACK（graceful degradation）
     # 注入已经 init 过的 okx_client（否则 Perceiver 会拿到未 init 的 client → AssertionError）
+    # 注入 SessionLocal 作为 session_factory（否则 Persistence 拿到 None）
     from app.agent import TrendAgent
     from app.agent.llm_client import DeepSeekProvider
     from app.agent.perceiver import Perceiver
@@ -127,6 +128,7 @@ async def lifespan(app: FastAPI):
     trend_agent = TrendAgent(
         reasoner=reasoner,
         perceiver=perceiver,
+        session=SessionLocal,  # session_factory (callable) — TrendAgent.analyze per-call 取新 Session
         max_retries=settings.agent_max_retries,
         initial_backoff=settings.agent_initial_backoff,
     )

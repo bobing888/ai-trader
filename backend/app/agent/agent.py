@@ -89,8 +89,25 @@ class TrendAgent:
         report = await self._reason_with_retry(ctx)
 
         # 3. Persist（失败 → raise，DB 问题必须知道）
-        AnalysisRepository.save(self._session, report)
-        # 不 commit — 让外层事务管理
+        # session 可以是 Session 实例或 session_factory callable
+        from app.db.session import SessionLocal as _DefaultSessionLocal
+
+        session_factory = self._session or _DefaultSessionLocal
+        # 如果是 Session 实例（已 open），直接用；如果是 factory，调用拿 session
+        if hasattr(session_factory, "add"):
+            db_session = session_factory
+            own_session = False
+        else:
+            db_session = session_factory()
+            own_session = True
+
+        try:
+            AnalysisRepository.save(db_session, report)
+            if own_session:
+                db_session.commit()
+        finally:
+            if own_session:
+                db_session.close()
 
         return report
 
