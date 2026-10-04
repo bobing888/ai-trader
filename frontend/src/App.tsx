@@ -15,6 +15,7 @@ import { RecommendationsPage } from "@/pages/RecommendationsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { StrategyPage } from "@/pages/StrategyPage";
 import { TradesPage } from "@/pages/TradesPage";
+import { TrendAgentPage } from "@/pages/TrendAgentPage";
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
                   <Route path="/backtest" element={<BacktestPage />} />
                   <Route path="/strategies" element={<StrategyPage />} />
                   <Route path="/futures" element={<FuturesPage />} />
+                  <Route path="/agent" element={<TrendAgentPage />} />
                   <Route path="/chart" element={<KlinePage />} />
                   <Route path="/settings" element={<SettingsPage />} />
                 </Routes>

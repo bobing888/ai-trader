@@ -78,6 +78,7 @@
     "backtest": "Backtest",
     "strategies": "Strategies",
     "futures": "Futures",
+    "agent": "AI Agent",
     "settings": "Settings",
     "system": "System"
   }

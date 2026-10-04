@@ -78,6 +78,7 @@
     "backtest": "回测",
     "strategies": "策略",
     "futures": "合约",
+    "agent": "智能研判",
     "settings": "设置",
     "system": "系统"
   }
