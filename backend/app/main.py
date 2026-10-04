@@ -112,15 +112,32 @@ async def lifespan(app: FastAPI):
     from app.agent.reasoner import Reasoner
     from app.agent.runner import AgentRunner
 
-    deepseek_provider = DeepSeekProvider()
-    reasoner = Reasoner(provider=deepseek_provider)
-    trend_agent = TrendAgent(reasoner=reasoner)
+    deepseek_provider = DeepSeekProvider(
+        api_key=settings.deepseek_api_key,
+        base_url=settings.deepseek_base_url,
+        model=settings.deepseek_model,
+    )
+    reasoner = Reasoner(
+        provider=deepseek_provider,
+        timeout=settings.agent_reasoning_timeout,
+    )
+    trend_agent = TrendAgent(
+        reasoner=reasoner,
+        max_retries=settings.agent_max_retries,
+        initial_backoff=settings.agent_initial_backoff,
+    )
 
-    agent_runner = AgentRunner(agent=trend_agent)
+    agent_runner = AgentRunner(
+        agent=trend_agent,
+        interval_seconds=settings.agent_refresh_interval,
+    )
     agent_runner.start()
     logger.info(
-        "[main.lifespan] agent_runner started: 5m cycle, "
-        "BTC + ETH × 5m/15m/1h/1d = 8 calls/cycle"
+        "[main.lifespan] agent_runner started: %ds cycle, "
+        "BTC + ETH × 5m/15m/1h/1d = 8 calls/cycle, "
+        "monthly_budget=¥%s",
+        settings.agent_refresh_interval,
+        settings.agent_monthly_budget_cny,
     )
     try:
         yield
