@@ -92,5 +92,26 @@ class Settings(BaseSettings):
     # PnL 上限（mock 演示用）
     follow_max_loss_pct: float = 0.5
 
+    # === Trend Analysis Agent (Task 12) ===
+    # DeepSeek API key（没设则 runner 跑 cycle 但全 FALLBACK）
+    deepseek_api_key: str = ""
+    # DeepSeek base URL（OpenAI 兼容）
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    # DeepSeek 模型名
+    deepseek_model: str = "deepseek-chat"
+    # Agent 推理超时（秒）— 单次 LLM call 上限
+    agent_reasoning_timeout: int = 30
+    # Agent 后台循环周期（秒）— 默认 300s (5m)
+    agent_refresh_interval: int = 300
+    # Agent 单次推理重试次数
+    agent_max_retries: int = 2
+    # Agent 初始 backoff（秒）— 指数退避起点
+    agent_initial_backoff: float = 0.5
+    # Agent Quality Targets (spec §9)
+    agent_target_brier_score: float = 0.25
+    agent_target_direction_accuracy: float = 0.6
+    # Agent 月度预算上限（元）
+    agent_monthly_budget_cny: float = 173.0
+
 
 settings = Settings()

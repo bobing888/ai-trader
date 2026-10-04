@@ -47,8 +47,9 @@ _PARSE_ERROR_REASONING = (
 class Reasoner:
     """Reasoner — PerceivedContext → AnalysisReport"""
 
-    def __init__(self, provider: LLMProvider) -> None:
+    def __init__(self, provider: LLMProvider, timeout: int = 30) -> None:
         self._provider = provider
+        self._timeout = timeout
 
     async def reason(self, ctx: PerceivedContext) -> AnalysisReport:
         """主入口
