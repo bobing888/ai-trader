@@ -132,6 +132,9 @@ export function Sidebar({ onClose, collapsed = false, onToggleCollapse }: Sideba
             <SidebarNavItem to="/futures" testId="nav-futures" icon={Repeat} collapsed={collapsed}>
               {t("nav.futures")}
             </SidebarNavItem>
+            <SidebarNavItem to="/agent" testId="nav-agent" icon={Brain} collapsed={collapsed}>
+              {t("nav.agent")}
+            </SidebarNavItem>
             <SidebarNavItem to="/chart" testId="nav-chart" icon={CandlestickChart} collapsed={collapsed}>
               K 线图
             </SidebarNavItem>

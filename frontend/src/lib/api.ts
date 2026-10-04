@@ -525,3 +525,78 @@ export async function fetchAnalysis(symbol: string, timeframe = "1h", limit = 50
   });
   return data;
 }
+
+// ─── Trend Analysis Agent (Task 10) ────────────────────────────────────────
+
+export type AgentRegime = "bull" | "bear" | "choppy" | "neutral" | "transition";
+export type AgentStatus = "success" | "fallback" | "parse_error" | "data_incomplete";
+
+export interface AgentAnalysisReport {
+  pair: string;
+  timeframe: string;
+  regime: AgentRegime;
+  regime_confidence: number;
+  reasoning: string;
+  key_observations: string[];
+  risks: string[];
+  analysis_status: AgentStatus;
+  raw_llm_response?: string | null;
+  created_at: string;
+}
+
+export interface AgentRecommendation {
+  pair: string;
+  timeframe: string;
+  direction: "long" | "short" | "neutral";
+  confidence: number;
+  rationale: string;
+  source: "llm" | "fallback" | "manual";
+  created_at: string;
+}
+
+export interface AgentReportList {
+  items: AgentAnalysisReport[];
+  total: number;
+}
+
+export interface AgentRecommendationList {
+  items: AgentRecommendation[];
+  total: number;
+}
+
+export interface AgentAnalyzeResponse {
+  items: AgentAnalysisReport[];
+  triggered_at: string;
+}
+
+export async function fetchAgentReports(
+  pair: string,
+  timeframe?: string,
+  limit = 20,
+): Promise<AgentReportList> {
+  const { data } = await apiClient.get<AgentReportList>("/agent/reports", {
+    params: { pair, timeframe, limit },
+  });
+  return data;
+}
+
+export async function fetchAgentRecommendations(
+  pair: string,
+  timeframe?: string,
+  limit = 20,
+): Promise<AgentRecommendationList> {
+  const { data } = await apiClient.get<AgentRecommendationList>("/agent/recommendations", {
+    params: { pair, timeframe, limit },
+  });
+  return data;
+}
+
+export async function triggerAgentAnalyze(
+  pair?: string,
+  timeframe?: string,
+): Promise<AgentAnalyzeResponse> {
+  const { data } = await apiClient.post<AgentAnalyzeResponse>("/agent/analyze", null, {
+    params: { pair, timeframe },
+  });
+  return data;
+}
